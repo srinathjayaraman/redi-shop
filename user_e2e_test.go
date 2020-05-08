@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// This test communicates with a running instance of redi-shop and concurrently creates,
+// updates and removes users.
+
 func TestUser(t *testing.T) {
 	start := 500
 	var wg sync.WaitGroup
