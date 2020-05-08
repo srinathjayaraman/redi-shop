@@ -13,6 +13,8 @@ func getUserRouter() fasthttp.RequestHandler {
 	h := user.NewRouteHandler()
 
 	r := router.New()
+	r.PanicHandler = panicHandler
+
 	r.POST("/users/create/", h.CreateUser)
 	r.DELETE("/users/remove/{user_id}", h.RemoveUser)
 	r.GET("/users/find/{user_id}", h.FindUser)
@@ -21,7 +23,32 @@ func getUserRouter() fasthttp.RequestHandler {
 	r.POST("/users/credit/subtract/{user_id}/{amount}", h.SubtractUserCredit)
 	r.POST("/users/credit/add/{user_id}/{amount}", h.AddUserCredit)
 
+	return r.Handler
+}
+
+func getOrderRouter() fasthttp.RequestHandler {
+	r := router.New()
 	r.PanicHandler = panicHandler
+
+	// TODO: Implement
+
+	return r.Handler
+}
+
+func getStockRouter() fasthttp.RequestHandler {
+	r := router.New()
+	r.PanicHandler = panicHandler
+
+	// TODO: Implement
+
+	return r.Handler
+}
+
+func getPaymentRouter() fasthttp.RequestHandler {
+	r := router.New()
+	r.PanicHandler = panicHandler
+
+	// TODO: Implement
 
 	return r.Handler
 }
