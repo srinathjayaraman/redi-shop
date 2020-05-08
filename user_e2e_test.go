@@ -30,16 +30,17 @@ func TestUser(t *testing.T) {
 }
 
 func checkUserE2E(t *testing.T) {
+	client := req.New()
 	assert := assert.New(t)
 	server := "http://localhost:8000"
 
-	resp, err := req.Post(server + "/users/create")
+	resp, err := client.Post(server + "/users/create")
 	assert.NoError(err)
 
 	userID, err := resp.ToString()
 	assert.NoError(err)
 
-	resp, err = req.Post(server + "/users/credit/add/" + userID + "/43")
+	resp, err = client.Post(server + "/users/credit/add/" + userID + "/43")
 	assert.NoError(err)
 
 	respString, err := resp.ToString()
@@ -50,7 +51,7 @@ func checkUserE2E(t *testing.T) {
 		log.Error("adding credit failed")
 	}
 
-	resp, err = req.Post(server + "/users/credit/subtract/" + userID + "/1")
+	resp, err = client.Post(server + "/users/credit/subtract/" + userID + "/1")
 	assert.NoError(err)
 
 	respString, err = resp.ToString()
@@ -60,7 +61,7 @@ func checkUserE2E(t *testing.T) {
 		log.Error("adding credit failed")
 	}
 
-	resp, err = req.Get(server + "/users/find/" + userID)
+	resp, err = client.Get(server + "/users/find/" + userID)
 	assert.NoError(err)
 
 	respString, err = resp.ToString()
@@ -69,7 +70,7 @@ func checkUserE2E(t *testing.T) {
 		log.Error("invalid value for user, should be (userID, 42), but was: " + respString)
 	}
 
-	resp, err = req.Get(server + "/users/credit/" + userID)
+	resp, err = client.Get(server + "/users/credit/" + userID)
 	assert.NoError(err)
 
 	respString, err = resp.ToString()
@@ -78,7 +79,7 @@ func checkUserE2E(t *testing.T) {
 		log.Error("invalid value for user credit, should be 42 but was: " + respString)
 	}
 
-	resp, err = req.Delete(server + "/users/remove/" + userID)
+	resp, err = client.Delete(server + "/users/remove/" + userID)
 	assert.NoError(err)
 
 	respString, err = resp.ToString()
@@ -88,7 +89,7 @@ func checkUserE2E(t *testing.T) {
 		log.Error("removing user failed")
 	}
 
-	resp, err = req.Get(server + "/users/find/" + userID)
+	resp, err = client.Get(server + "/users/find/" + userID)
 	assert.NoError(err)
 
 	if resp.Response().StatusCode != http.StatusNotFound {
