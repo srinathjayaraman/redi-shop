@@ -7,15 +7,27 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func StartServer(serverName string, getRouterFunc func(*gorm.DB) fasthttp.RequestHandler) {
+var services = map[string]func(*gorm.DB) fasthttp.RequestHandler{
+	"user":    getUserRouter,
+	"stock":   getStockRouter,
+	"payment": getPaymentRouter,
+	"order":   getOrderRouter,
+}
+
+func StartServer(serviceName string) {
 	db, err := gorm.Open("postgres", "host=localhost port=5432 user=postgres dbname=redi password=postgres sslmode=disable")
 	if err != nil {
 		logrus.WithError(err).Fatal("unable to connect to database")
 	}
 	defer db.Close()
 
-	logrus.WithField("service", serverName).Info("Redi-shop started, awaiting requests...")
-	err = fasthttp.ListenAndServe(":8000", getRouterFunc(db))
+	handlerFn, ok := services[serviceName]
+	if !ok {
+		logrus.WithField("service", serviceName).Fatal("service does not exist, valid services are: user, stock, order, payment")
+	}
+
+	logrus.WithField("service", serviceName).Info("Redi-shop started, awaiting requests...")
+	err = fasthttp.ListenAndServe(":8000", handlerFn(db))
 	if err != nil {
 		logrus.WithError(err).Fatal("error while listening")
 	}

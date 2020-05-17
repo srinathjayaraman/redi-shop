@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	util.StartServer("user", getUserRouter)
+	util.StartServer("user")
 }
