@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"fmt"
@@ -27,7 +27,7 @@ func getUserRouter(db *gorm.DB) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getOrderRouter() fasthttp.RequestHandler {
+func getOrderRouter(db *gorm.DB) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
@@ -42,7 +42,7 @@ func getOrderRouter() fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getStockRouter() fasthttp.RequestHandler {
+func getStockRouter(db *gorm.DB) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
@@ -56,7 +56,7 @@ func getStockRouter() fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getPaymentRouter() fasthttp.RequestHandler {
+func getPaymentRouter(db *gorm.DB) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 

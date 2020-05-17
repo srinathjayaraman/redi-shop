@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/jinzhu/gorm"
+	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/valyala/fasthttp"
 )
 
@@ -13,6 +14,7 @@ type postgresUserStore struct {
 }
 
 func newPostgresUserStore(db *gorm.DB) *postgresUserStore {
+	// AutoMigrate structs to create or update database tables
 	err := db.AutoMigrate(&User{}).Error
 	if err != nil {
 		panic(err)
@@ -23,33 +25,17 @@ func newPostgresUserStore(db *gorm.DB) *postgresUserStore {
 	}
 }
 
-func NotFound(ctx *fasthttp.RequestCtx) {
-	ctx.SetStatusCode(fasthttp.StatusNotFound)
-	ctx.Response.ConnectionClose()
-}
-
-func InternalServerError(ctx *fasthttp.RequestCtx) {
-	ctx.SetStatusCode(fasthttp.StatusInternalServerError)
-	ctx.Response.ConnectionClose()
-}
-
-func StringResponse(ctx *fasthttp.RequestCtx, status int, response string) {
-	ctx.SetStatusCode(status)
-	ctx.SetBodyString(response)
-	ctx.Response.ConnectionClose()
-}
-
 func (s *postgresUserStore) Create(ctx *fasthttp.RequestCtx) {
 	user := &User{}
 	err := s.db.Model(&User{}).
 		Create(user).
 		Error
 	if err != nil {
-		InternalServerError(ctx)
+		util.InternalServerError(ctx)
 		return
 	}
 
-	StringResponse(ctx, fasthttp.StatusCreated, user.ID)
+	util.StringResponse(ctx, fasthttp.StatusCreated, user.ID)
 }
 
 func (s *postgresUserStore) Remove(ctx *fasthttp.RequestCtx, userID string) {
@@ -57,10 +43,10 @@ func (s *postgresUserStore) Remove(ctx *fasthttp.RequestCtx, userID string) {
 		Delete(&User{ID: userID}).
 		Error
 	if err != nil {
-		InternalServerError(ctx)
+		util.InternalServerError(ctx)
 	}
 
-	StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.StringResponse(ctx, fasthttp.StatusOK, "success")
 }
 
 func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
@@ -70,14 +56,14 @@ func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 		First(user).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		NotFound(ctx)
+		util.NotFound(ctx)
 		return
 	} else if err != nil {
-		InternalServerError(ctx)
+		util.InternalServerError(ctx)
 		return
 	}
 
-	StringResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("(%s, %d)", user.ID, user.Credit))
+	util.StringResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("(%s, %d)", user.ID, user.Credit))
 }
 
 func (s *postgresUserStore) GetCredit(ctx *fasthttp.RequestCtx, userID string) {
@@ -87,14 +73,14 @@ func (s *postgresUserStore) GetCredit(ctx *fasthttp.RequestCtx, userID string) {
 		First(user).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		NotFound(ctx)
+		util.NotFound(ctx)
 		return
 	} else if err != nil {
-		InternalServerError(ctx)
+		util.InternalServerError(ctx)
 		return
 	}
 
-	StringResponse(ctx, fasthttp.StatusOK, strconv.Itoa(user.Credit))
+	util.StringResponse(ctx, fasthttp.StatusOK, strconv.Itoa(user.Credit))
 }
 
 func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
@@ -107,11 +93,11 @@ func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID stri
 				SubQuery()).
 		Error
 	if err != nil {
-		StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
 		return
 	}
 
-	StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.StringResponse(ctx, fasthttp.StatusOK, "success")
 }
 
 func (s *postgresUserStore) AddCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
@@ -124,9 +110,9 @@ func (s *postgresUserStore) AddCredit(ctx *fasthttp.RequestCtx, userID string, a
 				SubQuery()).
 		Error
 	if err != nil {
-		StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
 		return
 	}
 
-	StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.StringResponse(ctx, fasthttp.StatusOK, "success")
 }

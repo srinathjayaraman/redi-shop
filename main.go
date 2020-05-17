@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/martijnjanssen/redi-shop/util"
+	"github.com/martijnjanssen/redi-shop/server"
 )
 
 func main() {
-	util.StartServer("user")
+	server.Start("user")
 }
