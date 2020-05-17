@@ -4,13 +4,14 @@ import (
 	"fmt"
 
 	"github.com/fasthttp/router"
+	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/user"
 	"github.com/valyala/fasthttp"
 )
 
 // returns the router with all user routes
-func getUserRouter() fasthttp.RequestHandler {
-	h := user.NewRouteHandler()
+func getUserRouter(db *gorm.DB) fasthttp.RequestHandler {
+	h := user.NewRouteHandler(db)
 
 	r := router.New()
 	r.PanicHandler = panicHandler

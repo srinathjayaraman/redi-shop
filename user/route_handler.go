@@ -3,16 +3,26 @@ package user
 import (
 	"strconv"
 
+	"github.com/jinzhu/gorm"
 	"github.com/valyala/fasthttp"
 )
 
-type userRouteHandler struct {
-	userStore *userStore
+type userStore interface {
+	Create(*fasthttp.RequestCtx)
+	Remove(*fasthttp.RequestCtx, string)
+	Find(*fasthttp.RequestCtx, string)
+	GetCredit(*fasthttp.RequestCtx, string)
+	AddCredit(*fasthttp.RequestCtx, string, int)
+	SubtractCredit(*fasthttp.RequestCtx, string, int)
 }
 
-func NewRouteHandler() *userRouteHandler {
+type userRouteHandler struct {
+	userStore userStore
+}
+
+func NewRouteHandler(db *gorm.DB) *userRouteHandler {
 	return &userRouteHandler{
-		userStore: newUserStore(),
+		userStore: newPostgresUserStore(db),
 	}
 }
 
