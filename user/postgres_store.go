@@ -84,7 +84,25 @@ func (s *postgresUserStore) GetCredit(ctx *fasthttp.RequestCtx, userID string) {
 }
 
 func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
+	user := &User{}
 	err := s.db.Model(&User{}).
+		Where("id = ?", userID).
+		First(user).
+		Error
+	if err == gorm.ErrRecordNotFound {
+		util.NotFound(ctx)
+		return
+	} else if err != nil {
+		util.InternalServerError(ctx)
+		return
+	}
+
+	if user.Credit-amount < 0 {
+		util.StringResponse(ctx, fasthttp.StatusBadRequest, "failure")
+		return
+	}
+
+	err = s.db.Model(&User{}).
 		Where("id = ?", userID).
 		Update("credit", gorm.Expr("credit - ?", amount)).
 		Error

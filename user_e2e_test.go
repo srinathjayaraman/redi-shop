@@ -63,7 +63,7 @@ func checkUserE2E(t *testing.T) {
 	checkErr(assert, err)
 
 	if respString != "success" {
-		log.Error("adding credit failed")
+		log.Error("subtracting credit failed")
 	}
 
 	resp, err = client.Get(server + "/users/find/" + userID)
