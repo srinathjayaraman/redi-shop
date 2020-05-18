@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/martijnjanssen/redi-shop/server"
+	"github.com/martijnjanssen/redi-shop/cmd"
 )
 
 func main() {
-	server.Start("user")
+	cmd.Execute()
 }
