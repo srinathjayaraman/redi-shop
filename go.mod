@@ -5,7 +5,7 @@ go 1.13
 require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fasthttp/router v1.0.4
-	github.com/go-redis/redis v6.15.7+incompatible // indirect
+	github.com/go-redis/redis v6.15.7+incompatible
 	github.com/gofrs/uuid v3.3.0+incompatible
 	github.com/imroc/req v0.3.0
 	github.com/jinzhu/gorm v1.9.12

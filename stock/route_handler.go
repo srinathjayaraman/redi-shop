@@ -3,7 +3,7 @@ package stock
 import (
 	"strconv"
 
-	"github.com/jinzhu/gorm"
+	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/valyala/fasthttp"
 )
 
@@ -17,9 +17,9 @@ type stockRouteHandler struct {
 	stockStore stockStore
 }
 
-func NewRouteHandler(db *gorm.DB) *stockRouteHandler {
+func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
 	return &stockRouteHandler{
-		stockStore: newPostgresStockStore(db),
+		stockStore: newPostgresStockStore(conn.Postgres),
 	}
 }
 

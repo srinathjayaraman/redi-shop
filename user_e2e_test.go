@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/imroc/req"
 	log "github.com/sirupsen/logrus"
@@ -38,6 +41,8 @@ func checkUserE2E(t *testing.T) {
 	assert := assert.New(t)
 	server := "http://localhost:8000"
 
+	r := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
+
 	resp, err := client.Post(server + "/users/create")
 	if err != nil {
 		assert.FailNow(err.Error())
@@ -59,7 +64,9 @@ func checkUserE2E(t *testing.T) {
 		log.Error("adding credit failed")
 	}
 
-	resp, err = client.Post(server + "/users/credit/subtract/" + userID + "/1")
+	subtract := r.Intn(20)
+
+	resp, err = client.Post(server + "/users/credit/subtract/" + userID + "/" + strconv.Itoa(subtract))
 	checkErr(assert, err)
 
 	respString, err = resp.ToString()
@@ -72,10 +79,11 @@ func checkUserE2E(t *testing.T) {
 	resp, err = client.Get(server + "/users/find/" + userID)
 	checkErr(assert, err)
 
+	total := 43 - subtract
 	respString, err = resp.ToString()
 	checkErr(assert, err)
-	if respString != fmt.Sprintf("{\"user_id\": %s, \"credit\": 42}", userID) {
-		log.Error("invalid value for user, should be {\"user_id\": %s, \"credit\": 42}, but was: " + respString)
+	if respString != fmt.Sprintf("{\"user_id\": %s, \"credit\": %d}", userID, total) {
+		log.Error("invalid value for user, should be {\"user_id\": %s, \"credit\": %d}, but was: %s", userID, total, respString)
 	}
 
 	resp, err = client.Delete(server + "/users/remove/" + userID)

@@ -4,15 +4,15 @@ import (
 	"fmt"
 
 	"github.com/fasthttp/router"
-	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/stock"
 	"github.com/martijnjanssen/redi-shop/user"
+	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/valyala/fasthttp"
 )
 
 // returns the router with all user routes
-func getUserRouter(db *gorm.DB) fasthttp.RequestHandler {
-	h := user.NewRouteHandler(db)
+func getUserRouter(conn *util.Connection) fasthttp.RequestHandler {
+	h := user.NewRouteHandler(conn)
 
 	r := router.New()
 	r.PanicHandler = panicHandler
@@ -27,7 +27,7 @@ func getUserRouter(db *gorm.DB) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getOrderRouter(_ *gorm.DB) fasthttp.RequestHandler {
+func getOrderRouter(_ *util.Connection) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
@@ -42,8 +42,9 @@ func getOrderRouter(_ *gorm.DB) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getStockRouter(db *gorm.DB) fasthttp.RequestHandler {
-	h := stock.NewRouteHandler(db)
+func getStockRouter(conn *util.Connection) fasthttp.RequestHandler {
+	h := stock.NewRouteHandler(conn)
+
 	r := router.New()
 	r.PanicHandler = panicHandler
 
@@ -55,7 +56,7 @@ func getStockRouter(db *gorm.DB) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getPaymentRouter(_ *gorm.DB) fasthttp.RequestHandler {
+func getPaymentRouter(_ *util.Connection) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
