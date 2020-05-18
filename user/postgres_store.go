@@ -86,12 +86,9 @@ func (s *postgresUserStore) GetCredit(ctx *fasthttp.RequestCtx, userID string) {
 func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
 	err := s.db.Model(&User{}).
 		Where("id = ?", userID).
-		UpdateColumn("credit",
-			s.db.Table("users").
-				Select("credit - ? as new_credit", amount).
-				Where("id = ?", userID).
-				SubQuery()).
+		Update("credit", gorm.Expr("credit - ?", amount)).
 		Error
+
 	if err != nil {
 		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
 		return
@@ -103,11 +100,7 @@ func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID stri
 func (s *postgresUserStore) AddCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
 	err := s.db.Model(&User{}).
 		Where("id = ?", userID).
-		UpdateColumn("credit",
-			s.db.Table("users").
-				Select("credit + ? as new_credit", amount).
-				Where("id = ?", userID).
-				SubQuery()).
+		Update("credit", gorm.Expr("credit + ?", amount)).
 		Error
 	if err != nil {
 		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
