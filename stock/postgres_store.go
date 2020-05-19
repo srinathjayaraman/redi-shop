@@ -25,10 +25,11 @@ func newPostgresStockStore(db *gorm.DB) *postgresStockStore {
 }
 
 func (s *postgresStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
-	stock := &Stock{}
+	stock := &Stock{
+		Price: price,
+	}
 	err := s.db.Model(&Stock{}).
 		Create(stock).
-		Update("price", price).
 		Error
 	if err != nil {
 		util.InternalServerError(ctx)
@@ -56,7 +57,26 @@ func (s *postgresStockStore) Find(ctx *fasthttp.RequestCtx, itemID string) {
 }
 
 func (s *postgresStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID string, number int) {
+	stock := &Stock{}
 	err := s.db.Model(&Stock{}).
+		Where("id = ?", itemID).
+		First(stock).
+		Error
+
+	if err == gorm.ErrRecordNotFound {
+		util.NotFound(ctx)
+		return
+	} else if err != nil {
+		util.InternalServerError(ctx)
+		return
+	}
+
+	if stock.Number-number < 0 {
+		util.StringResponse(ctx, fasthttp.StatusBadRequest, "failure")
+		return
+	}
+
+	err = s.db.Model(&Stock{}).
 		Where("id = ?", itemID).
 		Update("number", gorm.Expr("number - ?", number)).
 		Error
@@ -65,7 +85,6 @@ func (s *postgresStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID stri
 		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
 		return
 	}
-
 	util.StringResponse(ctx, fasthttp.StatusOK, "success")
 }
 
