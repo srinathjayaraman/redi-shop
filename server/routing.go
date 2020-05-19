@@ -5,6 +5,7 @@ import (
 
 	"github.com/fasthttp/router"
 	"github.com/jinzhu/gorm"
+	"github.com/martijnjanssen/redi-shop/stock"
 	"github.com/martijnjanssen/redi-shop/user"
 	"github.com/valyala/fasthttp"
 )
@@ -43,15 +44,14 @@ func getOrderRouter(db *gorm.DB) fasthttp.RequestHandler {
 }
 
 func getStockRouter(db *gorm.DB) fasthttp.RequestHandler {
+	h := stock.NewRouteHandler(db)
 	r := router.New()
 	r.PanicHandler = panicHandler
 
-	// TODO: Implement
-	r.GET("/stock/availability/{item_id}", nil)
-	r.POST("/stock/subtract/{item_id}/{number}", nil)
-	r.POST("/stock/add/{item_id}/{number}", nil)
-	// TODO: This route is probably incorrectly specified in the doc, should probably have a price
-	r.POST("/stock/item/create", nil)
+	r.GET("/stock/find/{item_id}", h.FindStockItem)
+	r.POST("/stock/subtract/{item_id}/{number}", h.SubtractStockNumber)
+	r.POST("/stock/add/{item_id}/{number}", h.AddStockNumber)
+	r.POST("/stock/item/create/{price}", h.CreateStockItem)
 
 	return r.Handler
 }
