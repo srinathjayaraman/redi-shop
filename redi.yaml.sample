@@ -1,0 +1,10 @@
+# You only need to edit this sample config in the case that you have some non-standard settings,
+# there really is no reason you actually need to change these values.
+
+# service: user
+# postgres:
+#   url: localhost
+#   port: 5432
+#   database: redi
+#   username: postgres
+#   password: postgres
