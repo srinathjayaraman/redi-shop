@@ -16,3 +16,9 @@ func StringResponse(ctx *fasthttp.RequestCtx, status int, response string) {
 	ctx.SetStatusCode(status)
 	ctx.SetBodyString(response)
 }
+
+func JsonResponse(ctx *fasthttp.RequestCtx, status int, response string) {
+	ctx.SetStatusCode(status)
+	ctx.SetBodyString(response)
+	ctx.SetContentType("application/json")
+}

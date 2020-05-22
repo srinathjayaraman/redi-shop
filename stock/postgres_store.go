@@ -36,7 +36,7 @@ func (s *postgresStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 		return
 	}
 	response := fmt.Sprintf("{\"id\" : \"%s\"}", stock.ID)
-	util.StringResponse(ctx, fasthttp.StatusCreated, response)
+	util.JsonResponse(ctx, fasthttp.StatusCreated, response)
 }
 
 func (s *postgresStockStore) Find(ctx *fasthttp.RequestCtx, itemID string) {
@@ -53,7 +53,7 @@ func (s *postgresStockStore) Find(ctx *fasthttp.RequestCtx, itemID string) {
 		return
 	}
 	response := fmt.Sprintf("{\"price\" : %d, \"number\": %d}", stock.Price, stock.Number)
-	util.StringResponse(ctx, fasthttp.StatusOK, response)
+	util.JsonResponse(ctx, fasthttp.StatusOK, response)
 }
 
 func (s *postgresStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID string, number int) {
