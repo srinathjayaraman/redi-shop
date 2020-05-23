@@ -22,9 +22,11 @@ type userRouteHandler struct {
 // NewRouteHandler creates a route handler with a store depending on the active connection
 func NewRouteHandler(conn *util.Connection) *userRouteHandler {
 	var store userStore
-	if conn.Backend == "postgres" {
+
+	switch conn.Backend {
+	case util.POSTGRES:
 		store = newPostgresUserStore(conn.Postgres)
-	} else {
+	case util.REDIS:
 		store = newRedisUserStore(conn.Redis)
 	}
 

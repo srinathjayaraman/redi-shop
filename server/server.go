@@ -24,9 +24,9 @@ func Start() {
 	service := viper.GetString("service")
 
 	// Connect to the correct backend
-	conn := &util.Connection{Backend: viper.GetString("backend")}
+	conn := &util.Connection{Backend: util.GetConnectionType(viper.GetString("backend"))}
 	switch conn.Backend {
-	case "postgres":
+	case util.POSTGRES:
 		// Open database connection
 		db, err := gorm.Open("postgres",
 			fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
@@ -47,7 +47,7 @@ func Start() {
 
 		conn.Postgres = db
 
-	case "redis":
+	case util.REDIS:
 		client := redis.NewClient(&redis.Options{
 			Addr: fmt.Sprintf("%s:%d", viper.GetString("redis.url"), viper.GetInt("redis.port")),
 			// TODO: enable password access for redis
@@ -56,9 +56,6 @@ func Start() {
 			DB: 0, // use default DB
 		})
 		conn.Redis = client
-
-	default:
-		logrus.WithField("backend", conn.Backend).Fatal("invalid backend, should be one of: postgres, redis")
 	}
 
 	// Get the handlerFunc for the service we want to use
