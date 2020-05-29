@@ -37,18 +37,18 @@ func (s *redisUserStore) Create(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, userID)
+	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"user_id\": %s}", userID))
 }
 
 func (s *redisUserStore) Remove(ctx *fasthttp.RequestCtx, userID string) {
 	del := s.store.Del(userID)
 	if del.Err() != nil {
 		logrus.WithError(del.Err()).Error("unable to remove user")
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }
 
 func (s *redisUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
@@ -62,7 +62,7 @@ func (s *redisUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("(%s, %s)", userID, get.Val()))
+	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("{\"user_id\": %s, \"credit\": %s}", userID, get.Val()))
 }
 
 func (s *redisUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
@@ -81,27 +81,27 @@ func (s *redisUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string,
 	}
 
 	if credit-amount < 0 {
-		util.StringResponse(ctx, fasthttp.StatusBadRequest, "failure")
+		util.BadRequest(ctx)
 		return
 	}
 
 	decr := s.store.DecrBy(userID, int64(amount))
 	if decr.Err() != nil {
 		logrus.WithError(decr.Err()).Error("unable to decrement credit")
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }
 
 func (s *redisUserStore) AddCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
 	incr := s.store.IncrBy(userID, int64(amount))
 	if incr.Err() != nil {
 		logrus.WithError(incr.Err()).Error("unable to add credit")
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }
