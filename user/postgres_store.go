@@ -2,7 +2,6 @@ package user
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
@@ -35,7 +34,7 @@ func (s *postgresUserStore) Create(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	util.JsonResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"user_id\": %s}", user.ID))
+	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"user_id\": %s}", user.ID))
 }
 
 func (s *postgresUserStore) Remove(ctx *fasthttp.RequestCtx, userID string) {
@@ -46,7 +45,7 @@ func (s *postgresUserStore) Remove(ctx *fasthttp.RequestCtx, userID string) {
 		util.InternalServerError(ctx)
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }
 
 func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
@@ -63,24 +62,7 @@ func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 		return
 	}
 
-	util.JsonResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("{\"user_id\": %s, \"credit\": %d}", user.ID, user.Credit))
-}
-
-func (s *postgresUserStore) GetCredit(ctx *fasthttp.RequestCtx, userID string) {
-	user := &User{}
-	err := s.db.Model(&User{}).
-		Where("id = ?", userID).
-		First(user).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		return
-	} else if err != nil {
-		util.InternalServerError(ctx)
-		return
-	}
-
-	util.StringResponse(ctx, fasthttp.StatusOK, strconv.Itoa(user.Credit))
+	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("{\"user_id\": %s, \"credit\": %d}", user.ID, user.Credit))
 }
 
 func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
@@ -98,7 +80,7 @@ func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID stri
 	}
 
 	if user.Credit-amount < 0 {
-		util.StringResponse(ctx, fasthttp.StatusBadRequest, "failure")
+		util.BadRequest(ctx)
 		return
 	}
 
@@ -108,11 +90,11 @@ func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID stri
 		Error
 
 	if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }
 
 func (s *postgresUserStore) AddCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
@@ -121,9 +103,9 @@ func (s *postgresUserStore) AddCredit(ctx *fasthttp.RequestCtx, userID string, a
 		Update("credit", gorm.Expr("credit + ?", amount)).
 		Error
 	if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }

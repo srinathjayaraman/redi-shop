@@ -35,8 +35,9 @@ func (s *postgresStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 		util.InternalServerError(ctx)
 		return
 	}
+
 	response := fmt.Sprintf("{\"id\" : \"%s\"}", stock.ID)
-	util.JsonResponse(ctx, fasthttp.StatusCreated, response)
+	util.JSONResponse(ctx, fasthttp.StatusCreated, response)
 }
 
 func (s *postgresStockStore) Find(ctx *fasthttp.RequestCtx, itemID string) {
@@ -52,8 +53,9 @@ func (s *postgresStockStore) Find(ctx *fasthttp.RequestCtx, itemID string) {
 		util.InternalServerError(ctx)
 		return
 	}
+
 	response := fmt.Sprintf("{\"price\" : %d, \"number\": %d}", stock.Price, stock.Number)
-	util.JsonResponse(ctx, fasthttp.StatusOK, response)
+	util.JSONResponse(ctx, fasthttp.StatusOK, response)
 }
 
 func (s *postgresStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID string, number int) {
@@ -72,7 +74,7 @@ func (s *postgresStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID stri
 	}
 
 	if stock.Number-number < 0 {
-		util.StringResponse(ctx, fasthttp.StatusBadRequest, "failure")
+		util.BadRequest(ctx)
 		return
 	}
 
@@ -82,10 +84,11 @@ func (s *postgresStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID stri
 		Error
 
 	if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+
+	util.Ok(ctx)
 }
 
 func (s *postgresStockStore) AddStock(ctx *fasthttp.RequestCtx, itemID string, number int) {
@@ -94,9 +97,9 @@ func (s *postgresStockStore) AddStock(ctx *fasthttp.RequestCtx, itemID string, n
 		Update("number", gorm.Expr("number + ?", number)).
 		Error
 	if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }
