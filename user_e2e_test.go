@@ -78,15 +78,6 @@ func checkUserE2E(t *testing.T) {
 		log.Error("invalid value for user, should be {\"user_id\": %s, \"credit\": 42}, but was: " + respString)
 	}
 
-	resp, err = client.Get(server + "/users/credit/" + userID)
-	checkErr(assert, err)
-
-	respString, err = resp.ToString()
-	checkErr(assert, err)
-	if respString != "42" {
-		log.Error("invalid value for user credit, should be 42 but was: " + respString)
-	}
-
 	resp, err = client.Delete(server + "/users/remove/" + userID)
 	checkErr(assert, err)
 
