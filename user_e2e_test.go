@@ -97,10 +97,12 @@ func checkUserE2E(t *testing.T) {
 	resp, err = client.Get(server + "/users/find/" + userID)
 	checkErr(assert, err)
 
+	// nolint:bodyclose
 	if resp.Response().StatusCode != http.StatusNotFound {
 		log.Error("user should not be found after deleting")
 	}
 
+	// Close the body
 	err = resp.Response().Body.Close()
 	checkErr(assert, err)
 
