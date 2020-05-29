@@ -1,4 +1,4 @@
-package user
+package payment
 
 type paymentStore struct {
 }
