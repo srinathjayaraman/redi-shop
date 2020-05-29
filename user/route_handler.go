@@ -11,7 +11,6 @@ type userStore interface {
 	Create(*fasthttp.RequestCtx)
 	Remove(*fasthttp.RequestCtx, string)
 	Find(*fasthttp.RequestCtx, string)
-	GetCredit(*fasthttp.RequestCtx, string)
 	AddCredit(*fasthttp.RequestCtx, string, int)
 	SubtractCredit(*fasthttp.RequestCtx, string, int)
 }
@@ -43,13 +42,6 @@ func (h *userRouteHandler) FindUser(ctx *fasthttp.RequestCtx) {
 	userID := ctx.UserValue("user_id").(string)
 
 	h.userStore.Find(ctx, userID)
-}
-
-// Returns the current credit of a user
-func (h *userRouteHandler) GetUserCredit(ctx *fasthttp.RequestCtx) {
-	userID := ctx.UserValue("user_id").(string)
-
-	h.userStore.GetCredit(ctx, userID)
 }
 
 // Returns success/failure, depending on the credit status.

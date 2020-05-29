@@ -21,7 +21,6 @@ func getUserRouter(db *gorm.DB) fasthttp.RequestHandler {
 	r.DELETE("/users/remove/{user_id}", h.RemoveUser)
 	r.GET("/users/find/{user_id}", h.FindUser)
 
-	r.GET("/users/credit/{user_id}", h.GetUserCredit)
 	r.POST("/users/credit/subtract/{user_id}/{amount}", h.SubtractUserCredit)
 	r.POST("/users/credit/add/{user_id}/{amount}", h.AddUserCredit)
 
