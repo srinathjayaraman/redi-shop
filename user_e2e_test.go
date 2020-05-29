@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -15,7 +16,7 @@ import (
 // updates and removes users.
 
 func TestUser(t *testing.T) {
-	start := 500
+	start := 100
 	var wg sync.WaitGroup
 	wg.Add(start)
 
@@ -42,8 +43,10 @@ func checkUserE2E(t *testing.T) {
 		assert.FailNow(err.Error())
 	}
 
-	userID, err := resp.ToString()
+	userIDString, err := resp.ToString()
 	assert.NoError(err)
+
+	userID := strings.Split(strings.Split(userIDString, ": ")[1], "}")[0]
 
 	resp, err = client.Post(server + "/users/credit/add/" + userID + "/43")
 	checkErr(assert, err)
@@ -71,8 +74,8 @@ func checkUserE2E(t *testing.T) {
 
 	respString, err = resp.ToString()
 	checkErr(assert, err)
-	if respString != fmt.Sprintf("(%s, 42)", userID) {
-		log.Error("invalid value for user, should be (userID, 42), but was: " + respString)
+	if respString != fmt.Sprintf("{\"user_id\": %s, \"credit\": 42}", userID) {
+		log.Error("invalid value for user, should be {\"user_id\": %s, \"credit\": 42}, but was: " + respString)
 	}
 
 	resp, err = client.Get(server + "/users/credit/" + userID)
