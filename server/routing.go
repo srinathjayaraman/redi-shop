@@ -28,7 +28,7 @@ func getUserRouter(db *gorm.DB) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getOrderRouter(db *gorm.DB) fasthttp.RequestHandler {
+func getOrderRouter(_ *gorm.DB) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
@@ -56,7 +56,7 @@ func getStockRouter(db *gorm.DB) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getPaymentRouter(db *gorm.DB) fasthttp.RequestHandler {
+func getPaymentRouter(_ *gorm.DB) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
