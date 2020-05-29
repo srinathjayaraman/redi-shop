@@ -33,7 +33,11 @@ func Start() {
 	if err != nil {
 		logrus.WithError(err).Fatal("unable to connect to database")
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			logrus.WithError(err).Error("unable to close database connection")
+		}
+	}()
 
 	// Get the handlerFunc for the service we want to use
 	handlerFn, ok := services[service]

@@ -101,6 +101,9 @@ func checkUserE2E(t *testing.T) {
 		log.Error("user should not be found after deleting")
 	}
 
+	err = resp.Response().Body.Close()
+	checkErr(assert, err)
+
 	fmt.Printf("Done for user %s\n", userID)
 }
 
