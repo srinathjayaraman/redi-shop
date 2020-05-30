@@ -3,7 +3,7 @@ package user
 import (
 	"strconv"
 
-	"github.com/jinzhu/gorm"
+	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/valyala/fasthttp"
 )
 
@@ -19,9 +19,19 @@ type userRouteHandler struct {
 	userStore userStore
 }
 
-func NewRouteHandler(db *gorm.DB) *userRouteHandler {
+// NewRouteHandler creates a route handler with a store depending on the active connection
+func NewRouteHandler(conn *util.Connection) *userRouteHandler {
+	var store userStore
+
+	switch conn.Backend {
+	case util.POSTGRES:
+		store = newPostgresUserStore(conn.Postgres)
+	case util.REDIS:
+		store = newRedisUserStore(conn.Redis)
+	}
+
 	return &userRouteHandler{
-		userStore: newPostgresUserStore(db),
+		userStore: store,
 	}
 }
 

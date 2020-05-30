@@ -14,6 +14,7 @@ var (
 	// Used for flags.
 	cfgFile string
 	service string
+	backend string
 
 	rootCmd = &cobra.Command{
 		Use:   "redi",
@@ -32,6 +33,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./redi.yaml)")
 	rootCmd.Flags().StringVarP(&service, "service", "s", "", "Service to start (user, stock, order, payment)")
+	rootCmd.Flags().StringVarP(&backend, "backend", "b", "", "backend to use (postgres, redis)")
 }
 
 func initConfig() {
@@ -49,6 +51,10 @@ func initConfig() {
 	if err != nil {
 		logrus.WithError(err).Fatal("unable to bind service flag to config value")
 	}
+	err = viper.BindPFlag("backend", rootCmd.Flags().Lookup("backend"))
+	if err != nil {
+		logrus.WithError(err).Fatal("unable to bind backend flag to config value")
+	}
 
 	// Default config values
 	viper.SetDefault("postgres.url", "localhost")
@@ -56,6 +62,10 @@ func initConfig() {
 	viper.SetDefault("postgres.username", "postgres")
 	viper.SetDefault("postgres.password", "postgres")
 	viper.SetDefault("postgres.database", "redi")
+
+	viper.SetDefault("redis.url", "localhost")
+	viper.SetDefault("redis.port", "6379")
+	viper.SetDefault("redis.password", "redis")
 
 	viper.AutomaticEnv()
 
