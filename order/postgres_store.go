@@ -307,5 +307,9 @@ func mapToItemString(items map[string]int) string {
 		s = fmt.Sprintf("%s%s->%d,", s, k, v)
 	}
 
+	if s == "" {
+		return "[]"
+	}
+
 	return fmt.Sprintf("[%s]", s[:len(s)-1])
 }

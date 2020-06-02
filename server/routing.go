@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"runtime/debug"
 
 	"github.com/martijnjanssen/redi-shop/order"
 
@@ -74,7 +75,7 @@ func getPaymentRouter(conn *util.Connection) fasthttp.RequestHandler {
 }
 
 func panicHandler(ctx *fasthttp.RequestCtx, p interface{}) {
-	fmt.Println("Recovered in panicHandler", p)
+	fmt.Println("Recovered in panicHandler", p, string(debug.Stack()))
 
 	ctx.Response.Reset()
 	ctx.SetStatusCode(fasthttp.StatusInternalServerError)
