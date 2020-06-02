@@ -78,17 +78,21 @@ func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 }
 
 func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
+	tx := util.StartTX(s.db)
+
 	// Get the order from the database
 	order := &Order{}
-	err := s.db.Model(&Order{}).
+	err := tx.Model(&Order{}).
 		Where("id = ?", orderID).
 		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
@@ -96,13 +100,13 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 	c := fasthttp.Client{}
 	status, resp, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/stock/find/%s", itemID), nil)
 	if err != nil {
-		// TODO: Abort transaction here
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 	if status != fasthttp.StatusOK {
-		// TODO: Maybe relay the response?
 		ctx.SetStatusCode(status)
+		util.Rollback(tx)
 		return
 	}
 	pricePart := strings.Split(string(resp), "price: ")[1]
@@ -110,6 +114,7 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 	if err != nil {
 		logrus.WithError(err).WithField("stock", string(resp)).Error("malformed response from stock service")
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
@@ -120,33 +125,43 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 	order.Cost += price
 
 	// Save the updated order in the database
-	err = s.db.Model(&Order{}).
+	err = tx.Model(&Order{}).
 		Where("id = ?", orderID).
 		Update("items", order.Items).
 		Update("cost", order.Cost).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
+	if !util.Commit(tx) {
+		util.InternalServerError(ctx)
+		return
+	}
 	util.Ok(ctx)
 }
 
 func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
+	tx := util.StartTX(s.db)
+
 	order := &Order{}
-	err := s.db.Model(&Order{}).
+	err := tx.Model(&Order{}).
 		Where("id = ?", orderID).
 		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
@@ -156,34 +171,43 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 	delete(items, itemID)
 	order.Items = mapToItemString(items)
 
-	err = s.db.Model(&Order{}).
+	err = tx.Model(&Order{}).
 		Where("id = ?", orderID).
 		Update("items", order.Items).
 		Update("cost", order.Cost).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
+	if !util.Commit(tx) {
+		util.InternalServerError(ctx)
+		return
+	}
 	util.Ok(ctx)
 }
 
 // NOTE: function is highly experimental, has to be changed/tweaked to handle transactions and other services better
 func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
+	tx := util.StartTX(s.db)
 	order := &Order{}
-	err := s.db.Model(&Order{}).
+	err := tx.Model(&Order{}).
 		Where("id = ? AND NOT paid", orderID).
 		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
@@ -191,26 +215,28 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 	// Make the payment
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/payment/pay/%s/%s/%d", order.UserID, orderID, order.Cost), nil)
 	if err != nil {
-		// TODO: Abort transaction here
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 	if status != fasthttp.StatusOK {
-		// TODO: Maybe relay the response?
 		ctx.SetStatusCode(status)
+		util.Rollback(tx)
 		return
 	}
 
 	// Set the order as paid in the database
-	err = s.db.Model(&Order{}).
+	err = tx.Model(&Order{}).
 		Where("id = ? AND NOT paid", orderID).
 		Update("paid", true).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
@@ -219,19 +245,21 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 	for k := range items {
 		status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/stock/subtract/%s/1", k), nil)
 		if err != nil {
-			// TODO: Abort transaction here
-
 			util.InternalServerError(ctx)
+			util.Rollback(tx)
 			return
 		}
 		if status != fasthttp.StatusOK {
-			// TODO: Maybe relay the response?
 			ctx.SetStatusCode(status)
+			util.Rollback(tx)
 			return
 		}
 	}
 
-	// TODO: Commit transaction
+	if !util.Commit(tx) {
+		util.InternalServerError(ctx)
+		return
+	}
 	util.Ok(ctx)
 }
 
