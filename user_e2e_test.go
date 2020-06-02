@@ -19,7 +19,7 @@ import (
 // updates and removes users.
 
 func TestUser(t *testing.T) {
-	start := 500
+	start := 250
 	var wg sync.WaitGroup
 	wg.Add(start)
 

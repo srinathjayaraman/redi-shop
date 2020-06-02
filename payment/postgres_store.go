@@ -25,9 +25,11 @@ func newPostgresPaymentStore(db *gorm.DB) *postgresPaymentStore {
 }
 
 func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID string, amount int) {
+	tx := util.StartTX(s.db)
+
 	exists := false
 	payment := &Payment{}
-	err := s.db.Model(&Payment{}).
+	err := tx.Model(&Payment{}).
 		Where("id = ?", userID).
 		First(payment).
 		Error
@@ -36,12 +38,14 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 		exists = false
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
 	// If record is found, check that it is not already paid
 	if exists && payment.Status == "paid" {
 		util.BadRequest(ctx)
+		util.Rollback(tx)
 		return
 	}
 
@@ -49,9 +53,11 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/subtract/%s/%d", userID, amount), nil)
 	if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	} else if status != fasthttp.StatusOK {
 		ctx.SetStatusCode(status)
+		util.Rollback(tx)
 		return
 	}
 
@@ -68,29 +74,39 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 	err = q.Error
 	if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
+	if !util.Commit(tx) {
+		util.InternalServerError(ctx)
+		return
+	}
 	util.Ok(ctx)
 }
 
 func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orderID string) {
+	tx := util.StartTX(s.db)
+
 	// Retrieve the payment which needs to be cancelled
 	payment := &Payment{}
-	err := s.db.Model(&Payment{}).
+	err := tx.Model(&Payment{}).
 		Where("order_id = ?", orderID).
 		First(payment).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
 	if payment.Status == "cancelled" {
 		util.BadRequest(ctx)
+		util.Rollback(tx)
 		return
 	}
 
@@ -99,26 +115,34 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/add/%s/%d", userID, payment.Amount), nil)
 	if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 	if status != fasthttp.StatusOK {
 		ctx.SetStatusCode(status)
+		util.Rollback(tx)
 		return
 	}
 
 	// Update the status of the payment to "cancelled"
-	err = s.db.Model(&Payment{}).
+	err = tx.Model(&Payment{}).
 		Where("order_id = ?", orderID).
 		Update("status", "cancelled").
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
+	if !util.Commit(tx) {
+		util.InternalServerError(ctx)
+		return
+	}
 	util.Ok(ctx)
 }
 
