@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/martijnjanssen/redi-shop/server"
 	"github.com/sirupsen/logrus"
@@ -72,6 +73,7 @@ func initConfig() {
 	viper.SetDefault("url.stock", "localhost")
 	viper.SetDefault("url.payment", "localhost")
 
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {
