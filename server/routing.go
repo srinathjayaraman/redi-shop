@@ -6,6 +6,7 @@ import (
 	"github.com/martijnjanssen/redi-shop/order"
 
 	"github.com/fasthttp/router"
+	"github.com/martijnjanssen/redi-shop/payment"
 	"github.com/martijnjanssen/redi-shop/stock"
 	"github.com/martijnjanssen/redi-shop/user"
 	"github.com/martijnjanssen/redi-shop/util"
@@ -59,14 +60,15 @@ func getStockRouter(conn *util.Connection) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getPaymentRouter(_ *util.Connection) fasthttp.RequestHandler {
+func getPaymentRouter(conn *util.Connection) fasthttp.RequestHandler {
+	h := payment.NewRouteHandler(conn)
+
 	r := router.New()
 	r.PanicHandler = panicHandler
 
-	// TODO: Implement
-	r.POST("/payment/pay/{user_id}/{order_id}", nil)
-	r.POST("/payment/cancel/{user_id}/{order_id}", nil)
-	r.GET("/payment/status/{order_id}", nil)
+	r.POST("/payment/pay/{user_id}/{order_id}/{amount}", h.PayOrder)
+	r.POST("/payment/cancel/{user_id}/{order_id}", h.CancelOrder)
+	r.GET("/payment/status/{order_id}", h.GetPaymentStatus)
 
 	return r.Handler
 }
