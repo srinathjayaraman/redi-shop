@@ -12,16 +12,18 @@ import (
 )
 
 type postgresOrderStore struct {
-	db *gorm.DB
+	db   *gorm.DB
+	urls *util.Services
 }
 
-func newPostgresOrderStore(db *gorm.DB) *postgresOrderStore {
+func newPostgresOrderStore(db *gorm.DB, urls *util.Services) *postgresOrderStore {
 	err := db.AutoMigrate(&Order{}).Error
 	if err != nil {
 		panic(err)
 	}
 	return &postgresOrderStore{
-		db: db,
+		db:   db,
+		urls: urls,
 	}
 }
 
@@ -98,7 +100,7 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 
 	// Get the price of the item
 	c := fasthttp.Client{}
-	status, resp, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/stock/find/%s", itemID), nil)
+	status, resp, err := c.Post([]byte{}, fmt.Sprintf("%s/stock/find/%s", s.urls.Stock, itemID), nil)
 	if err != nil {
 		util.InternalServerError(ctx)
 		util.Rollback(tx)
@@ -213,7 +215,7 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 
 	c := fasthttp.Client{}
 	// Make the payment
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/payment/pay/%s/%s/%d", order.UserID, orderID, order.Cost), nil)
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/pay/%s/%s/%d", s.urls.Payment, order.UserID, orderID, order.Cost), nil)
 	if err != nil {
 		util.InternalServerError(ctx)
 		util.Rollback(tx)
@@ -243,7 +245,7 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 	// Subtract stock for each item in the order
 	items := itemStringToMap(order.Items)
 	for k := range items {
-		status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/stock/subtract/%s/1", k), nil)
+		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/stock/subtract/%s/1", s.urls.Stock, k), nil)
 		if err != nil {
 			util.InternalServerError(ctx)
 			util.Rollback(tx)

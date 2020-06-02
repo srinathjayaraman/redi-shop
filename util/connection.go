@@ -30,4 +30,13 @@ type Connection struct {
 	Backend  ConnectionType
 	Postgres *gorm.DB
 	Redis    *redis.Client
+
+	URL Services
+}
+
+type Services struct {
+	User    string
+	Order   string
+	Stock   string
+	Payment string
 }

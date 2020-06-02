@@ -9,10 +9,11 @@ import (
 )
 
 type postgresStockStore struct {
-	db *gorm.DB
+	db   *gorm.DB
+	urls *util.Services
 }
 
-func newPostgresStockStore(db *gorm.DB) *postgresStockStore {
+func newPostgresStockStore(db *gorm.DB, urls *util.Services) *postgresStockStore {
 	// AutoMigrate structs to create or update database tables
 	err := db.AutoMigrate(&Stock{}).Error
 	if err != nil {
@@ -20,7 +21,8 @@ func newPostgresStockStore(db *gorm.DB) *postgresStockStore {
 	}
 
 	return &postgresStockStore{
-		db: db,
+		db:   db,
+		urls: urls,
 	}
 }
 

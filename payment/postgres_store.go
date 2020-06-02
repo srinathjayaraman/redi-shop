@@ -9,10 +9,11 @@ import (
 )
 
 type postgresPaymentStore struct {
-	db *gorm.DB
+	db   *gorm.DB
+	urls *util.Services
 }
 
-func newPostgresPaymentStore(db *gorm.DB) *postgresPaymentStore {
+func newPostgresPaymentStore(db *gorm.DB, urls *util.Services) *postgresPaymentStore {
 	// AutoMigrate structs to create or update database tables
 	err := db.AutoMigrate(&Payment{}).Error
 	if err != nil {
@@ -20,7 +21,8 @@ func newPostgresPaymentStore(db *gorm.DB) *postgresPaymentStore {
 	}
 
 	return &postgresPaymentStore{
-		db: db,
+		db:   db,
+		urls: urls,
 	}
 }
 
@@ -50,7 +52,7 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 	}
 
 	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/subtract/%s/%d", userID, amount), nil)
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/subtract/%s/%d", s.urls.User, userID, amount), nil)
 	if err != nil {
 		util.InternalServerError(ctx)
 		util.Rollback(tx)
@@ -112,7 +114,7 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 
 	// Refund the credit to the user
 	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/add/%s/%d", userID, payment.Amount), nil)
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/add/%s/%d", s.urls.User, userID, payment.Amount), nil)
 	if err != nil {
 		util.InternalServerError(ctx)
 		util.Rollback(tx)

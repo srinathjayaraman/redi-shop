@@ -58,6 +58,11 @@ func Start() {
 		conn.Redis = client
 	}
 
+	conn.URL.User = viper.GetString("url.user")
+	conn.URL.Order = viper.GetString("url.order")
+	conn.URL.Stock = viper.GetString("url.stock")
+	conn.URL.Payment = viper.GetString("url.payment")
+
 	// Get the handlerFunc for the service we want to use
 	handlerFn, ok := services[service]
 	if !ok {

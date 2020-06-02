@@ -22,7 +22,7 @@ func NewRouteHandler(conn *util.Connection) *paymentRouteHandler {
 
 	switch conn.Backend {
 	case util.POSTGRES:
-		store = newPostgresPaymentStore(conn.Postgres)
+		store = newPostgresPaymentStore(conn.Postgres, &conn.URL)
 	case util.REDIS:
 		panic("NOT IMPLEMENTED")
 	}

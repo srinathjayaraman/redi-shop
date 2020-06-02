@@ -25,7 +25,7 @@ func NewRouteHandler(conn *util.Connection) *userRouteHandler {
 
 	switch conn.Backend {
 	case util.POSTGRES:
-		store = newPostgresUserStore(conn.Postgres)
+		store = newPostgresUserStore(conn.Postgres, &conn.URL)
 	case util.REDIS:
 		store = newRedisUserStore(conn.Redis)
 	}
