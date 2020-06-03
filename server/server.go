@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/go-redis/redis/v8"
@@ -55,6 +56,10 @@ func Start() {
 			// Password: viper.GetString("redis.password"),
 			DB: 0, // use default DB
 		})
+		err := client.Ping(context.Background()).Err()
+		if err != nil {
+			logrus.WithError(err).Error("invalid redis connection")
+		}
 		conn.Redis = client
 	}
 
