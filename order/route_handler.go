@@ -23,7 +23,7 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 
 	switch conn.Backend {
 	case util.POSTGRES:
-		store = newPostgresOrderStore(conn.Postgres)
+		store = newPostgresOrderStore(conn.Postgres, &conn.URL)
 	case util.REDIS:
 		panic("NOT IMPLEMENTED")
 	}

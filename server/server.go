@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/go-redis/redis/v8"
@@ -55,8 +56,17 @@ func Start() {
 			// Password: viper.GetString("redis.password"),
 			DB: 0, // use default DB
 		})
+		err := client.Ping(context.Background()).Err()
+		if err != nil {
+			logrus.WithError(err).Error("invalid redis connection")
+		}
 		conn.Redis = client
 	}
+
+	conn.URL.User = viper.GetString("url.user")
+	conn.URL.Order = viper.GetString("url.order")
+	conn.URL.Stock = viper.GetString("url.stock")
+	conn.URL.Payment = viper.GetString("url.payment")
 
 	// Get the handlerFunc for the service we want to use
 	handlerFn, ok := services[service]

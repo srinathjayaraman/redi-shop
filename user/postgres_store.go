@@ -5,14 +5,16 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
+	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
 
 type postgresUserStore struct {
-	db *gorm.DB
+	db   *gorm.DB
+	urls *util.Services
 }
 
-func newPostgresUserStore(db *gorm.DB) *postgresUserStore {
+func newPostgresUserStore(db *gorm.DB, urls *util.Services) *postgresUserStore {
 	// AutoMigrate structs to create or update database tables
 	err := db.AutoMigrate(&User{}).Error
 	if err != nil {
@@ -20,7 +22,8 @@ func newPostgresUserStore(db *gorm.DB) *postgresUserStore {
 	}
 
 	return &postgresUserStore{
-		db: db,
+		db:   db,
+		urls: urls,
 	}
 }
 
@@ -30,6 +33,7 @@ func (s *postgresUserStore) Create(ctx *fasthttp.RequestCtx) {
 		Create(user).
 		Error
 	if err != nil {
+		logrus.WithError(err).Error("unable to create new user")
 		util.InternalServerError(ctx)
 		return
 	}
@@ -42,6 +46,7 @@ func (s *postgresUserStore) Remove(ctx *fasthttp.RequestCtx, userID string) {
 		Delete(&User{ID: userID}).
 		Error
 	if err != nil {
+		logrus.WithError(err).Error("unable to remove user")
 		util.InternalServerError(ctx)
 	}
 
@@ -58,6 +63,7 @@ func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 		util.NotFound(ctx)
 		return
 	} else if err != nil {
+		logrus.WithError(err).Error("unable to find user")
 		util.InternalServerError(ctx)
 		return
 	}
@@ -66,34 +72,49 @@ func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 }
 
 func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
+	tx := util.StartTX(s.db)
+
 	user := &User{}
-	err := s.db.Model(&User{}).
+	err := tx.Model(&User{}).
 		Where("id = ?", userID).
 		First(user).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
+		util.Rollback(tx)
 		return
 	} else if err != nil {
+		logrus.WithError(err).Error("unable to find user to subtract credit")
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
 	if user.Credit-amount < 0 {
+		logrus.WithField("user_id", userID).Info("credit cannot go below 0")
 		util.BadRequest(ctx)
+		util.Rollback(tx)
 		return
 	}
 
-	err = s.db.Model(&User{}).
+	err = tx.Model(&User{}).
 		Where("id = ?", userID).
 		Update("credit", gorm.Expr("credit - ?", amount)).
 		Error
-
-	if err != nil {
+	if err == gorm.ErrRecordNotFound {
+		util.NotFound(ctx)
+		util.Rollback(tx)
+		return
+	} else if err != nil {
+		logrus.WithError(err).Error("unable to subtract credit")
 		util.InternalServerError(ctx)
+		util.Rollback(tx)
 		return
 	}
 
+	if !util.Commit(tx) {
+		util.InternalServerError(ctx)
+	}
 	util.Ok(ctx)
 }
 
@@ -102,7 +123,11 @@ func (s *postgresUserStore) AddCredit(ctx *fasthttp.RequestCtx, userID string, a
 		Where("id = ?", userID).
 		Update("credit", gorm.Expr("credit + ?", amount)).
 		Error
-	if err != nil {
+	if err == gorm.ErrRecordNotFound {
+		util.NotFound(ctx)
+		return
+	} else if err != nil {
+		logrus.WithError(err).Error("unable to add credit")
 		util.InternalServerError(ctx)
 		return
 	}

@@ -8,3 +8,9 @@
 #   database: redi
 #   username: postgres
 #   password: postgres
+
+# url:
+#   user:
+#   order:
+#   stock:
+#   payment:
