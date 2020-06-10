@@ -17,15 +17,16 @@ type redisOrderStore struct {
 	urls  *util.Services
 }
 
-func newRedisOrderStore(c *redis.Client) *redisOrderStore {
+func newRedisOrderStore(c *redis.Client, urls *util.Services) *redisOrderStore {
 	return &redisOrderStore{
 		store: c,
+		urls:  urls,
 	}
 }
 
 func (s *redisOrderStore) Create(ctx *fasthttp.RequestCtx, userID string) {
 	orderID := uuid.Must(uuid.NewV4()).String()
-	json := fmt.Sprintf("{\"user_id\": \"%s\", \"paid\": false, \"items\": [], \"cost\": 0}", userID)
+	json := fmt.Sprintf("{\"user_id\": \"%s\", \"items\": [], \"cost\": 0}", userID)
 
 	set := s.store.SetNX(ctx, orderID, json, 0)
 	if set.Err() != nil {
@@ -65,6 +66,18 @@ func (s *redisOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 		return
 	}
 
+	c := fasthttp.Client{}
+	status, statusResp, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/status/%s/", s.urls.Payment, orderID), nil)
+	if err != nil {
+		logrus.WithError(err).Error("unable to get payment status")
+		util.InternalServerError(ctx)
+		return
+	} else if status != fasthttp.StatusOK {
+		logrus.WithField("status", status).Error("error while getting payment status")
+		ctx.SetStatusCode(status)
+		return
+	}
+
 	// Extract [...] part of the order, remove "->#" (cost mapping) from string and assemble string again
 	itemsSplit := strings.Split(get.Val(), "items\": ")
 	arraySplit := strings.Split(itemsSplit[1], ",")
@@ -72,7 +85,7 @@ func (s *redisOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 	itemsSplit[1] = strings.Join(arraySplit, ",")
 	json := strings.Join(itemsSplit, "items\": ")
 
-	util.JSONResponse(ctx, fasthttp.StatusOK, json)
+	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("%s, \"paid\": %t}", json[:len(json)-1], strings.Contains(string(statusResp), "true")))
 }
 
 func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
@@ -99,8 +112,8 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 		return
 	}
 
-	pricePart := strings.Split(string(resp), "\"price\": ")[1]
-	price, err := strconv.Atoi(pricePart[:len(pricePart)-1])
+	pricePart := strings.Split(strings.Split(string(resp), "\"price\": ")[1], ",")[0]
+	price, err := strconv.Atoi(pricePart)
 	if err != nil {
 		logrus.WithError(err).WithField("stock", string(resp)).Error("malformed response from stock service")
 		util.InternalServerError(ctx)
@@ -117,10 +130,10 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 	itemsString := mapToItemString(items)
 
 	//update the price of the order
-	costPart := strings.Split(strings.Split(jsonSplit[1], "\"cost\": ")[1], "}")[0]
+	costPart := strings.Split(jsonSplit[1], "\"cost\": ")[1]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
-		logrus.WithError(err).Error("cannot parse order cost")
+		logrus.WithField("cost", costPart).WithError(err).Error("cannot parse order cost")
 		util.InternalServerError(ctx)
 		return
 	}
@@ -137,7 +150,6 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 	}
 
 	util.Ok(ctx)
-
 }
 
 func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
@@ -156,10 +168,10 @@ func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, i
 	jsonSplit := strings.Split(json, "\"items\": ")
 
 	// Get price of the order
-	costPart := strings.Split(strings.Split(jsonSplit[1], "\"cost\": ")[1], "}")[0]
+	costPart := strings.Split(jsonSplit[1], "\"cost\": ")[1]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
-		logrus.WithError(err).Error("cannot parse order cost")
+		logrus.WithField("cost", costPart).WithError(err).Error("cannot parse order cost")
 		util.InternalServerError(ctx)
 		return
 	}
@@ -194,17 +206,16 @@ func (s *redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
 		util.InternalServerError(ctx)
 		return
 	}
-	// Get the values of the order
-	order := stringToStruct(getOrder.Val())
 
-	if order.Paid == "paid" {
-		util.BadRequest(ctx)
-		return
-	}
+	// Get the values of the order
+	jsonSplit := strings.Split(getOrder.Val(), ": ")
+	userID := strings.Split(jsonSplit[1][1:], "\",")[0]
+	itemsArray := strings.Split(jsonSplit[2], ", \"")[0]
+	cost := strings.Split(jsonSplit[3], "}")[0]
 
 	// Make the payment by calling payment service
 	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/pay/%s/%s/%s", s.urls.Payment, order.UserID, orderID, order.Cost), nil)
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/pay/%s/%s/%s", s.urls.Payment, userID, orderID, cost), nil)
 	if err != nil {
 		logrus.WithError(err).Error("unable to pay for the order")
 		util.InternalServerError(ctx)
@@ -216,7 +227,7 @@ func (s *redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
 	}
 
 	// Subtract stock for each item in the order
-	items := itemStringToMap(order.Items)
+	items := itemStringToMap(itemsArray)
 	for k := range items {
 		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/stock/subtract/%s/1", s.urls.Stock, k), nil)
 		if err != nil {
@@ -230,42 +241,5 @@ func (s *redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
 		}
 	}
 
-	json := fmt.Sprintf("{\"user_id\": \"%s\", \"paid\": true, \"items\": %s, \"cost\": %s}", order.UserID, order.Items, order.Cost)
-	set := s.store.Set(ctx, orderID, json, 0)
-	if set.Err() != nil {
-		logrus.WithError(set.Err()).Error("unable to update order item")
-		util.InternalServerError(ctx)
-		return
-	}
-
 	util.Ok(ctx)
-}
-
-type simpleOrder struct {
-	UserID string
-	Paid   string
-	Items  string
-	Cost   string
-}
-
-func stringToStruct(order string) *simpleOrder {
-	// {\"user_id\": \"%s\", \"paid\": false, \"items\": [], \"cost\": 0}
-	jsonSplit := strings.Split(order, ": ")
-
-	// {\"user_id\":
-	// \"%s\", \"paid\":
-	// false, \"items\":
-	// [], \"cost\":
-	// 0}
-	userID := strings.Split(jsonSplit[1], ",")[0]
-	paid := strings.Split(jsonSplit[2], ",")[0]
-	items := strings.Split(jsonSplit[3], ",")[0]
-	cost := strings.Split(jsonSplit[4], "}")[0]
-
-	return &simpleOrder{
-		UserID: userID[1 : len(userID)-1],
-		Paid:   paid,
-		Items:  items,
-		Cost:   cost,
-	}
 }
