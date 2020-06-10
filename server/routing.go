@@ -67,8 +67,8 @@ func getPaymentRouter(conn *util.Connection) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
-	r.POST("/payment/pay/{user_id}/{order_id}/{amount}", h.PayOrder)
-	r.POST("/payment/cancel/{user_id}/{order_id}", h.CancelOrder)
+	// r.POST("/payment/pay/{user_id}/{order_id}/{amount}", h.PayOrder)
+	// r.POST("/payment/cancel/{user_id}/{order_id}", h.CancelOrder)
 	r.GET("/payment/status/{order_id}", h.GetPaymentStatus)
 
 	return r.Handler

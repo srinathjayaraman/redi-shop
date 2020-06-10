@@ -26,8 +26,7 @@ func Start() {
 
 	// Connect to the correct backend
 	conn := &util.Connection{Backend: util.GetConnectionType(viper.GetString("backend"))}
-	switch conn.Backend {
-	case util.POSTGRES:
+	if conn.Backend == util.POSTGRES {
 		// Open database connection
 		db, err := gorm.Open("postgres",
 			fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
@@ -47,21 +46,20 @@ func Start() {
 		}()
 
 		conn.Postgres = db
-
-	case util.REDIS:
-		client := redis.NewClient(&redis.Options{
-			Addr: fmt.Sprintf("%s:%d", viper.GetString("redis.url"), viper.GetInt("redis.port")),
-			// TODO: enable password access for redis
-			// https://github.com/go-redis/redis/pull/1325
-			// Password: viper.GetString("redis.password"),
-			DB: 0, // use default DB
-		})
-		err := client.Ping(context.Background()).Err()
-		if err != nil {
-			logrus.WithError(err).Error("invalid redis connection")
-		}
-		conn.Redis = client
 	}
+
+	client := redis.NewClient(&redis.Options{
+		Addr: fmt.Sprintf("%s:%d", viper.GetString("redis.url"), viper.GetInt("redis.port")),
+		// TODO: enable password access for redis
+		// https://github.com/go-redis/redis/pull/1325
+		// Password: viper.GetString("redis.password"),
+		DB: 0, // use default DB
+	})
+	err := client.Ping(context.Background()).Err()
+	if err != nil {
+		logrus.WithError(err).Error("invalid redis connection")
+	}
+	conn.Redis = client
 
 	conn.URL.User = viper.GetString("url.user")
 	conn.URL.Order = viper.GetString("url.order")
@@ -76,7 +74,7 @@ func Start() {
 
 	// Start listening to incoming requests
 	logrus.WithField("service", service).Info("Redi-shop started, awaiting requests...")
-	err := fasthttp.ListenAndServe(":8000", handlerFn(conn))
+	err = fasthttp.ListenAndServe(":8000", handlerFn(conn))
 	if err != nil {
 		logrus.WithError(err).Fatal("error while listening")
 	}

@@ -1,6 +1,7 @@
 package stock
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/jinzhu/gorm"
@@ -64,24 +65,43 @@ func (s *postgresStockStore) Find(ctx *fasthttp.RequestCtx, itemID string) {
 }
 
 func (s *postgresStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID string, number int) {
+	err := s.subtract(ctx, itemID, number)
+	if err == util.INTERNAL_ERR {
+		util.InternalServerError(ctx)
+	} else if err == util.BAD_REQUEST {
+		util.BadRequest(ctx)
+	}
+
+	util.Ok(ctx)
+}
+
+func (s *postgresStockStore) AddStock(ctx *fasthttp.RequestCtx, itemID string, number int) {
+	err := s.add(ctx, itemID, number)
+	if err == util.INTERNAL_ERR {
+		util.InternalServerError(ctx)
+	} else if err == util.BAD_REQUEST {
+		util.BadRequest(ctx)
+	}
+
+	util.Ok(ctx)
+}
+
+func (s *postgresStockStore) subtract(_ context.Context, itemID string, number int) error {
 	stock := &Stock{}
 	err := s.db.Model(&Stock{}).
 		Where("id = ?", itemID).
 		First(stock).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		return
+		return util.BAD_REQUEST
 	} else if err != nil {
 		logrus.WithError(err).Error("unable to get stock item to subtract")
-		util.InternalServerError(ctx)
-		return
+		return util.INTERNAL_ERR
 	}
 
 	if stock.Number-number < 0 {
 		logrus.WithField("item_id", itemID).Warning("stock cannot go below 0")
-		util.BadRequest(ctx)
-		return
+		return util.BAD_REQUEST
 	}
 
 	err = s.db.Model(&Stock{}).
@@ -90,26 +110,23 @@ func (s *postgresStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID stri
 		Error
 	if err != nil {
 		logrus.WithError(err).Error("unable to subtract stock")
-		util.InternalServerError(ctx)
-		return
+		return util.INTERNAL_ERR
 	}
 
-	util.Ok(ctx)
+	return nil
 }
 
-func (s *postgresStockStore) AddStock(ctx *fasthttp.RequestCtx, itemID string, number int) {
+func (s *postgresStockStore) add(_ context.Context, itemID string, number int) error {
 	err := s.db.Model(&Stock{}).
 		Where("id = ?", itemID).
 		Update("number", gorm.Expr("number + ?", number)).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		return
+		return util.BAD_REQUEST
 	} else if err != nil {
-		util.InternalServerError(ctx)
 		logrus.WithError(err).Error("unable to add stock")
-		return
+		return util.INTERNAL_ERR
 	}
 
-	util.Ok(ctx)
+	return nil
 }
