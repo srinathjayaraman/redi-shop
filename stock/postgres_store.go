@@ -6,6 +6,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
@@ -87,30 +88,40 @@ func (s *postgresStockStore) AddStock(ctx *fasthttp.RequestCtx, itemID string, n
 }
 
 func (s *postgresStockStore) subtract(_ context.Context, itemID string, number int) error {
-	stock := &Stock{}
-	err := s.db.Model(&Stock{}).
-		Where("id = ?", itemID).
-		First(stock).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		return util.BAD_REQUEST
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to get stock item to subtract")
-		return util.INTERNAL_ERR
-	}
+	var result error
 
-	if stock.Number-number < 0 {
-		logrus.WithField("item_id", itemID).Warning("stock cannot go below 0")
-		return util.BAD_REQUEST
-	}
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		err := tx.Model(&Stock{}).
+			Where("id = ?", itemID).
+			Update("number", gorm.Expr("number - ?", number)).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			result = util.BAD_REQUEST
+			return errors.Wrap(err, "stock not found")
+		} else if err != nil {
+			result = util.INTERNAL_ERR
+			return errors.Wrap(err, "unable to subtract stock")
+		}
 
-	err = s.db.Model(&Stock{}).
-		Where("id = ?", itemID).
-		Update("number", gorm.Expr("number - ?", number)).
-		Error
+		// Check whether the stock is still above 0
+		err = tx.Model(&Stock{}).
+			Where("id = ?", itemID).
+			Where("number-? > 0", number).
+			First(&Stock{}).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			result = util.BAD_REQUEST
+			return errors.Wrap(err, "stock cannot go below 0")
+		} else if err != nil {
+			result = util.INTERNAL_ERR
+			return errors.Wrap(err, "unable to get stock")
+		}
+
+		return nil
+	})
 	if err != nil {
 		logrus.WithError(err).Error("unable to subtract stock")
-		return util.INTERNAL_ERR
+		return result
 	}
 
 	return nil

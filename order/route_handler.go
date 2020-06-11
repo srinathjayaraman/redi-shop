@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gofrs/uuid"
@@ -28,7 +30,8 @@ var ErrNil = errors.New("value does not exist")
 type orderRouteHandler struct {
 	orderStore orderStore
 	redis      *redis.Client
-	chans      map[string]chan (string)
+	ctxs       *sync.Map
+	resps      *sync.Map
 }
 
 func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
@@ -44,18 +47,20 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 	h := &orderRouteHandler{
 		orderStore: store,
 		redis:      conn.Redis,
-		chans:      make(map[string]chan string),
+		ctxs:       &sync.Map{},
+		resps:      &sync.Map{},
 	}
 
-	go handleEvents(conn.Redis, h.chans, util.CHANNEL_ORDER)
+	go h.respondCtxs()
+	go h.handleEvents()
 
 	return h
 }
 
-func handleEvents(rClient *redis.Client, chans map[string]chan (string), channels ...string) {
+func (h *orderRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := rClient.Subscribe(ctx, channels...)
+	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_ORDER)
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -63,18 +68,52 @@ func handleEvents(rClient *redis.Client, chans map[string]chan (string), channel
 		logrus.WithError(err).Panic("error listening to channel")
 	}
 
-	var m string
 	var rm *redis.Message
 
 	// Go channel which receives messages.
 	ch := pubsub.Channel()
+	for rm = range ch {
+		s := strings.Split(rm.Payload, "#")
+		h.resps.Store(s[0], s[1])
+
+	}
+
+	logrus.Fatal("SHOULD NEVER REACH THIS")
+}
+
+func (h *orderRouteHandler) respondCtxs() {
 	for {
-		select {
-		case rm = <-ch:
-			m = rm.Payload
-			s := strings.Split(m, "#")
-			chans[s[0]] <- s[1]
+		var toRemove []interface{}
+		h.resps.Range(func(key interface{}, val interface{}) bool {
+			c, ok := h.ctxs.Load(key)
+			if !ok {
+				return true
+			}
+			ctx, _ := c.(*fasthttp.RequestCtx)
+			message, _ := val.(string)
+
+			switch message {
+			case util.MESSAGE_ORDER_SUCCESS:
+				util.Ok(ctx)
+			case util.MESSAGE_ORDER_BADREQUEST:
+				util.BadRequest(ctx)
+			case util.MESSAGE_ORDER_INTERNAL:
+				util.InternalServerError(ctx)
+			default:
+				logrus.WithField("message", message).Error("unknown message")
+			}
+
+			toRemove = append(toRemove, key)
+
+			return true
+		})
+
+		for i := range toRemove {
+			h.ctxs.Delete(toRemove[i])
+			h.resps.Delete(toRemove[i])
 		}
+
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -126,9 +165,7 @@ func (h *orderRouteHandler) CheckoutOrder(ctx *fasthttp.RequestCtx) {
 	}
 
 	trackID := uuid.Must(uuid.NewV4()).String()
-	c := make(chan string, 1)
-
-	h.chans[trackID] = c
+	h.ctxs.Store(trackID, ctx)
 
 	// Send message to issue order payment
 	err = h.redis.Publish(ctx, util.CHANNEL_PAYMENT, fmt.Sprintf("%s#%s#%s", trackID, util.MESSAGE_PAY, order)).Err()
@@ -138,19 +175,22 @@ func (h *orderRouteHandler) CheckoutOrder(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	select {
-	case m := <-c:
-		switch m {
-		case util.MESSAGE_ORDER_SUCCESS:
-			util.Ok(ctx)
-		case util.MESSAGE_ORDER_BADREQUEST:
-			util.BadRequest(ctx)
-		case util.MESSAGE_ORDER_INTERNAL:
-			util.InternalServerError(ctx)
-		}
-	}
+	// select {
+	// case m := <-c:
+	// 	switch m {
+	// 	case util.MESSAGE_ORDER_SUCCESS:
+	// 		util.Ok(ctx)
+	// 	case util.MESSAGE_ORDER_BADREQUEST:
+	// 		util.BadRequest(ctx)
+	// 	case util.MESSAGE_ORDER_INTERNAL:
+	// 		util.InternalServerError(ctx)
+	// 	}
+	// }
 
-	// Close the channel and remove from the map
-	close(c)
-	delete(h.chans, trackID)
+	// logrus.WithField("trackID", trackID).Info("removing from map")
+	// // Remove channel from the map and close it
+	// h.mx.Lock()
+	// delete(h.chans, trackID)
+	// h.mx.Unlock()
+	// close(c)
 }

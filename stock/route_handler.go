@@ -41,15 +41,15 @@ func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
 		redis:      conn.Redis,
 	}
 
-	go h.handleEvents(conn.Redis, util.CHANNEL_STOCK)
+	go h.handleEvents()
 
 	return h
 }
 
-func (h *stockRouteHandler) handleEvents(rClient *redis.Client, channels ...string) {
+func (h *stockRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := rClient.Subscribe(ctx, channels...)
+	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_STOCK)
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)

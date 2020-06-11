@@ -50,8 +50,7 @@ func (s *redisPaymentStore) Pay(ctx context.Context, userID string, orderID stri
 		return util.HTTPErrorToSAGAError(status)
 	}
 
-	//Set payment status to paid. SETNX command will set key to hold a string value if key does not exist. If key already exists, no operation is performed.
-	set := s.store.SetNX(ctx, orderID, fmt.Sprintf("{\"amount\": %d, \"status\": \"paid\"}", amount), 0)
+	set := s.store.Set(ctx, orderID, fmt.Sprintf("{\"amount\": %d, \"status\": \"paid\"}", amount), 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to persist payment")
 		return util.INTERNAL_ERR
@@ -61,7 +60,7 @@ func (s *redisPaymentStore) Pay(ctx context.Context, userID string, orderID stri
 }
 
 func (s *redisPaymentStore) Cancel(ctx context.Context, userID string, orderID string) error {
-	// Retrieve the payment which needs to be cancelled
+	// Retrieve the payment which needs to be canceled
 	get := s.store.Get(ctx, orderID)
 	if get.Err() == redis.Nil {
 		return util.BAD_REQUEST
@@ -73,7 +72,7 @@ func (s *redisPaymentStore) Cancel(ctx context.Context, userID string, orderID s
 	// get the amount and status in this format --> {"amount": int, "status": "string"}
 	json := get.Val()
 
-	// code for retrieving only the status of the payment from the json (used to check if the payment has already been cancelled)
+	// code for retrieving only the status of the payment from the json (used to check if the payment has already been canceled)
 	// Retrieve the string between "\"status\": \"" and "\"}"
 	payment_status := strings.Split(strings.Split(json, "\"status\": \"")[1], "\"}")[0]
 
@@ -81,8 +80,8 @@ func (s *redisPaymentStore) Cancel(ctx context.Context, userID string, orderID s
 	// Retrieve the string between "\"amount\": " and ","
 	amount := strings.Split(strings.Split(json, "\"amount\": ")[1], ",")[0]
 
-	if payment_status == "cancelled" {
-		logrus.Info("payment is already cancelled")
+	if payment_status == "canceled" {
+		logrus.Info("payment is already canceled")
 		return util.BAD_REQUEST
 	}
 
@@ -97,8 +96,8 @@ func (s *redisPaymentStore) Cancel(ctx context.Context, userID string, orderID s
 		return util.HTTPErrorToSAGAError(status)
 	}
 
-	// Update the status of the payment to cancelled
-	set := s.store.Set(ctx, orderID, fmt.Sprintf("{\"amount\": %s, \"status\": \"cancelled\"}", amount), 0)
+	// Update the status of the payment to canceled
+	set := s.store.Set(ctx, orderID, fmt.Sprintf("{\"amount\": %s, \"status\": \"canceled\"}", amount), 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update payment status")
 		return util.INTERNAL_ERR

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/jinzhu/gorm"
@@ -74,7 +75,14 @@ func Start() {
 
 	// Start listening to incoming requests
 	logrus.WithField("service", service).Info("Redi-shop started, awaiting requests...")
-	err = fasthttp.ListenAndServe(":8000", handlerFn(conn))
+	server := fasthttp.Server{
+		Concurrency: 256 * 1024,
+		// MaxConnsPerIP: 512,
+		MaxConnsPerIP: 1024,
+		IdleTimeout:   20 * time.Second,
+		Handler:       handlerFn(conn),
+	}
+	err = server.ListenAndServe(":8000")
 	if err != nil {
 		logrus.WithError(err).Fatal("error while listening")
 	}

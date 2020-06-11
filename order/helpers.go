@@ -41,14 +41,13 @@ func itemStringToMap(items string) map[string]int {
 }
 
 func mapToItemString(items map[string]int) string {
-	s := ""
-
-	for k, v := range items {
-		s = fmt.Sprintf("%s%s->%d,", s, k, v)
+	if len(items) == 0 {
+		return "[]"
 	}
 
-	if s == "" {
-		return "[]"
+	s := ""
+	for k, v := range items {
+		s = fmt.Sprintf("%s%s->%d,", s, k, v)
 	}
 
 	return fmt.Sprintf("[%s]", s[:len(s)-1])

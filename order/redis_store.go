@@ -207,9 +207,9 @@ func (s *redisOrderStore) GetOrder(ctx *fasthttp.RequestCtx, orderID string) (st
 
 	// Extract [...] part of the order, remove "->#" (cost mapping) from string and assemble string again
 	itemsSplit := strings.Split(get.Val(), "items\": ")
-	arraySplit := strings.Split(itemsSplit[1], ",")
+	arraySplit := strings.Split(itemsSplit[1], ", ")
 	arraySplit[0] = itemStringToJSONString(arraySplit[0])
-	itemsSplit[1] = strings.Join(arraySplit, ",")
+	itemsSplit[1] = strings.Join(arraySplit, ", ")
 	json := strings.Join(itemsSplit, "items\": ")
 
 	return fmt.Sprintf("{\"order_id\": \"%s\", %s", orderID, json[1:]), nil
