@@ -77,8 +77,11 @@ func (h *paymentRouteHandler) PayOrder(ctx context.Context, tracker string, orde
 	if err != nil {
 		if err == util.INTERNAL_ERR {
 			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_INTERNAL, "")
+		} else {
+			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
 		}
-		util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
+
+		return
 	}
 
 	util.Pub(h.redis, ctx, util.CHANNEL_STOCK, tracker, util.MESSAGE_STOCK, order)

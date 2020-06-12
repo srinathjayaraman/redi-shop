@@ -71,12 +71,16 @@ func (h *stockRouteHandler) handleEvents() {
 }
 
 func (h *stockRouteHandler) SubtractStockItems(ctx context.Context, tracker string, order string) {
-	items := strings.Split(strings.Split(order, "\"items\": ")[1], ", \"")[0]
+	items := strings.Split(strings.Split(order, "\"items\": [")[1], "]")[0]
+
+	if items == "" {
+		util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
+		return
+	}
 
 	var err error
 	done := []string{}
-	for _, i := range strings.Split(items[1:len(items)-1], ",") {
-		item := i[1 : len(i)-1]
+	for _, item := range strings.Split(items[1:len(items)-1], "\",\"") {
 		err = h.stockStore.subtract(ctx, item, 1)
 		if err != nil {
 			break

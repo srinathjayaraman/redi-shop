@@ -174,23 +174,4 @@ func (h *orderRouteHandler) CheckoutOrder(ctx *fasthttp.RequestCtx) {
 		util.InternalServerError(ctx)
 		return
 	}
-
-	// select {
-	// case m := <-c:
-	// 	switch m {
-	// 	case util.MESSAGE_ORDER_SUCCESS:
-	// 		util.Ok(ctx)
-	// 	case util.MESSAGE_ORDER_BADREQUEST:
-	// 		util.BadRequest(ctx)
-	// 	case util.MESSAGE_ORDER_INTERNAL:
-	// 		util.InternalServerError(ctx)
-	// 	}
-	// }
-
-	// logrus.WithField("trackID", trackID).Info("removing from map")
-	// // Remove channel from the map and close it
-	// h.mx.Lock()
-	// delete(h.chans, trackID)
-	// h.mx.Unlock()
-	// close(c)
 }
