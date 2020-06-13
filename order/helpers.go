@@ -6,29 +6,33 @@ import (
 	"strings"
 )
 
-func itemStringToJSONString(itemString string) string {
-	items := itemStringToMap(itemString)
-	itemsString := ""
-	for k := range items {
-		itemString = fmt.Sprintf("%s\"%s\",", itemString, k)
+func itemStringToJSONString(items string) string {
+	if items == "[]" {
+		return "[]"
 	}
 
-	return itemsString[:len(itemsString)-1]
+	m := itemStringToMap(items)
+	res := ""
+	for k := range m {
+		res = fmt.Sprintf("%s\"%s\",", res, k)
+	}
+
+	return fmt.Sprintf("[%s]", res[:len(res)-1])
 }
 
-func itemStringToMap(itemString string) map[string]int {
+func itemStringToMap(items string) map[string]int {
 	m := map[string]int{}
 
-	if itemString == "[]" {
+	if items == "[]" {
 		return m
 	}
 
-	items := strings.Split(itemString[1:len(itemString)-1], ",")
-	for i := range items {
-		item := strings.Split(items[i], "->")
+	itemSplit := strings.Split(items[1:len(items)-1], ",")
+	for i := range itemSplit {
+		item := strings.Split(itemSplit[i], "->")
 		val, err := strconv.Atoi(item[1])
 		if err != nil {
-			panic(fmt.Sprintf("invalid string representation of item, %s", items[i]))
+			panic(fmt.Sprintf("invalid string representation of item, %s", itemSplit[i]))
 		}
 		m[item[0]] = val
 	}
@@ -37,14 +41,13 @@ func itemStringToMap(itemString string) map[string]int {
 }
 
 func mapToItemString(items map[string]int) string {
-	s := ""
-
-	for k, v := range items {
-		s = fmt.Sprintf("%s%s->%d,", s, k, v)
+	if len(items) == 0 {
+		return "[]"
 	}
 
-	if s == "" {
-		return "[]"
+	s := ""
+	for k, v := range items {
+		s = fmt.Sprintf("%s%s->%d,", s, k, v)
 	}
 
 	return fmt.Sprintf("[%s]", s[:len(s)-1])

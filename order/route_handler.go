@@ -1,7 +1,17 @@
 package order
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"github.com/gofrs/uuid"
 	"github.com/martijnjanssen/redi-shop/util"
+	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
 
@@ -11,11 +21,17 @@ type orderStore interface {
 	Find(*fasthttp.RequestCtx, string)
 	AddItem(*fasthttp.RequestCtx, string, string)
 	RemoveItem(*fasthttp.RequestCtx, string, string)
-	Checkout(*fasthttp.RequestCtx, string)
+
+	GetOrder(*fasthttp.RequestCtx, string) (string, error)
 }
+
+var ErrNil = errors.New("value does not exist")
 
 type orderRouteHandler struct {
 	orderStore orderStore
+	redis      *redis.Client
+	ctxs       *sync.Map
+	resps      *sync.Map
 }
 
 func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
@@ -28,8 +44,76 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 		store = newRedisOrderStore(conn.Redis, &conn.URL)
 	}
 
-	return &orderRouteHandler{
+	h := &orderRouteHandler{
 		orderStore: store,
+		redis:      conn.Redis,
+		ctxs:       &sync.Map{},
+		resps:      &sync.Map{},
+	}
+
+	go h.respondCtxs()
+	go h.handleEvents()
+
+	return h
+}
+
+func (h *orderRouteHandler) handleEvents() {
+	ctx := context.Background()
+
+	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_ORDER)
+
+	// Wait for confirmation that subscription is created before publishing anything.
+	_, err := pubsub.Receive(ctx)
+	if err != nil {
+		logrus.WithError(err).Panic("error listening to channel")
+	}
+
+	var rm *redis.Message
+
+	// Go channel which receives messages.
+	ch := pubsub.Channel()
+	for rm = range ch {
+		s := strings.Split(rm.Payload, "#")
+		h.resps.Store(s[0], s[1])
+
+	}
+
+	logrus.Fatal("SHOULD NEVER REACH THIS")
+}
+
+func (h *orderRouteHandler) respondCtxs() {
+	for {
+		var toRemove []interface{}
+		h.resps.Range(func(key interface{}, val interface{}) bool {
+			c, ok := h.ctxs.Load(key)
+			if !ok {
+				return true
+			}
+			ctx, _ := c.(*fasthttp.RequestCtx)
+			message, _ := val.(string)
+
+			switch message {
+			case util.MESSAGE_ORDER_SUCCESS:
+				util.Ok(ctx)
+			case util.MESSAGE_ORDER_BADREQUEST:
+				util.BadRequest(ctx)
+			case util.MESSAGE_ORDER_INTERNAL:
+				util.InternalServerError(ctx)
+			default:
+				logrus.WithField("message", message).Error("unknown message")
+			}
+
+			toRemove = append(toRemove, key)
+
+			return true
+		})
+
+		for i := range toRemove {
+			h.ctxs.Delete(toRemove[i])
+			h.resps.Delete(toRemove[i])
+		}
+
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -68,5 +152,26 @@ func (h *orderRouteHandler) RemoveOrderItem(ctx *fasthttp.RequestCtx) {
 // Make the payment, subtract the stock and return a status
 func (h *orderRouteHandler) CheckoutOrder(ctx *fasthttp.RequestCtx) {
 	orderID := ctx.UserValue("order_id").(string)
-	h.orderStore.Checkout(ctx, orderID)
+
+	// h.orderStore.Checkout(ctx, orderID)
+	order, err := h.orderStore.GetOrder(ctx, orderID)
+	if err == ErrNil {
+		util.NotFound(ctx)
+		return
+	} else if err != nil {
+		logrus.WithError(err).Error("unable to get order")
+		util.InternalServerError(ctx)
+		return
+	}
+
+	trackID := uuid.Must(uuid.NewV4()).String()
+	h.ctxs.Store(trackID, ctx)
+
+	// Send message to issue order payment
+	err = h.redis.Publish(ctx, util.CHANNEL_PAYMENT, fmt.Sprintf("%s#%s#%s", trackID, util.MESSAGE_PAY, order)).Err()
+	if err != nil {
+		logrus.WithError(err).Error("unable to publish message")
+		util.InternalServerError(ctx)
+		return
+	}
 }

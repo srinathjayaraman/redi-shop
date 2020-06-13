@@ -1,7 +1,6 @@
 package user
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/jinzhu/gorm"
@@ -76,25 +75,7 @@ func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 
 func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		user := &User{}
 		err := tx.Model(&User{}).
-			Where("id = ?", userID).
-			First(user).
-			Error
-		if err == gorm.ErrRecordNotFound {
-			util.NotFound(ctx)
-			return errors.New("user not found")
-		} else if err != nil {
-			util.InternalServerError(ctx)
-			return errwrap.Wrap(err, "unable to get user")
-		}
-
-		if user.Credit-amount < 0 {
-			util.BadRequest(ctx)
-			return errors.New("credit cannot go below 0")
-		}
-
-		err = tx.Model(&User{}).
 			Where("id = ?", userID).
 			Update("credit", gorm.Expr("credit - ?", amount)).
 			Error
@@ -104,6 +85,20 @@ func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID stri
 		} else if err != nil {
 			util.InternalServerError(ctx)
 			return errwrap.Wrap(err, "unable to update credit")
+		}
+
+		user := &User{}
+		err = tx.Model(&User{}).
+			Where("id = ?", userID).
+			Where("credit - ? > 0", amount).
+			First(user).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.BadRequest(ctx)
+			return errwrap.Wrap(err, "credit cannot go below 0")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to get user")
 		}
 
 		return nil

@@ -8,6 +8,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/gofrs/uuid"
 	"github.com/martijnjanssen/redi-shop/util"
+	errwrap "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
@@ -196,50 +197,20 @@ func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, i
 	util.Ok(ctx)
 }
 
-func (s *redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
-	getOrder := s.store.Get(ctx, orderID)
-	if getOrder.Err() == redis.Nil {
-		util.NotFound(ctx)
-		return
-	} else if getOrder.Err() != nil {
-		logrus.WithError(getOrder.Err()).Error("unable to get order to add item")
-		util.InternalServerError(ctx)
-		return
+func (s *redisOrderStore) GetOrder(ctx *fasthttp.RequestCtx, orderID string) (string, error) {
+	get := s.store.Get(ctx, orderID)
+	if get.Err() == redis.Nil {
+		return "", ErrNil
+	} else if get.Err() != nil {
+		return "", errwrap.Wrap(get.Err(), "unable to get order to add item")
 	}
 
-	// Get the values of the order
-	jsonSplit := strings.Split(getOrder.Val(), ": ")
-	userID := strings.Split(jsonSplit[1][1:], "\",")[0]
-	itemsArray := strings.Split(jsonSplit[2], ", \"")[0]
-	cost := strings.Split(jsonSplit[3], "}")[0]
+	// Extract [...] part of the order, remove "->#" (cost mapping) from string and assemble string again
+	itemsSplit := strings.Split(get.Val(), "items\": ")
+	arraySplit := strings.Split(itemsSplit[1], ", ")
+	arraySplit[0] = itemStringToJSONString(arraySplit[0])
+	itemsSplit[1] = strings.Join(arraySplit, ", ")
+	json := strings.Join(itemsSplit, "items\": ")
 
-	// Make the payment by calling payment service
-	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/pay/%s/%s/%s", s.urls.Payment, userID, orderID, cost), nil)
-	if err != nil {
-		logrus.WithError(err).Error("unable to pay for the order")
-		util.InternalServerError(ctx)
-		return
-	} else if status != fasthttp.StatusOK {
-		logrus.WithField("status", status).Error("error while paying for the order")
-		ctx.SetStatusCode(status)
-		return
-	}
-
-	// Subtract stock for each item in the order
-	items := itemStringToMap(itemsArray)
-	for k := range items {
-		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/stock/subtract/%s/1", s.urls.Stock, k), nil)
-		if err != nil {
-			logrus.WithError(err).Error("unable to subtract stock")
-			util.InternalServerError(ctx)
-			return
-		} else if status != fasthttp.StatusOK {
-			logrus.WithField("status", status).Error("error while subtracting stock")
-			ctx.SetStatusCode(status)
-			return
-		}
-	}
-
-	util.Ok(ctx)
+	return fmt.Sprintf("{\"order_id\": \"%s\", %s", orderID, json[1:]), nil
 }

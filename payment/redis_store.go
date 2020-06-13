@@ -1,6 +1,7 @@
 package payment
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -23,21 +24,19 @@ func newRedisPaymentStore(c *redis.Client, urls *util.Services) *redisPaymentSto
 	}
 }
 
-func (s *redisPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID string, amount int) {
+func (s *redisPaymentStore) Pay(ctx context.Context, userID string, orderID string, amount int) error {
 	exists := true
 	get := s.store.Get(ctx, orderID)
 	if get.Err() == redis.Nil {
 		exists = false
 	} else if get.Err() != nil {
 		logrus.WithError(get.Err()).Error("unable to retrieve payment")
-		util.InternalServerError(ctx)
-		return
+		return util.INTERNAL_ERR
 	}
 
 	if exists && strings.Contains(get.Val(), "paid") {
 		logrus.Info("order was already paid")
-		util.BadRequest(ctx)
-		return
+		return util.BAD_REQUEST
 	}
 
 	//Call the user service to subtract the order amount from the users' credit
@@ -45,40 +44,35 @@ func (s *redisPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/subtract/%s/%d", s.urls.User, userID, amount), nil)
 	if err != nil {
 		logrus.WithError(err).Error("unable to subtract credit")
-		util.InternalServerError(ctx)
-		return
+		return util.INTERNAL_ERR
 	} else if status != fasthttp.StatusOK {
 		logrus.WithField("status", status).Error("error while subtracting credit")
-		ctx.SetStatusCode(status)
-		return
+		return util.HTTPErrorToSAGAError(status)
 	}
 
-	//Set payment status to paid. SETNX command will set key to hold a string value if key does not exist. If key already exists, no operation is performed.
-	set := s.store.SetNX(ctx, orderID, fmt.Sprintf("{\"amount\": %d, \"status\": \"paid\"}", amount), 0)
+	set := s.store.Set(ctx, orderID, fmt.Sprintf("{\"amount\": %d, \"status\": \"paid\"}", amount), 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to persist payment")
-		util.InternalServerError(ctx)
-		return
+		return util.INTERNAL_ERR
 	}
-	util.Ok(ctx)
+
+	return nil
 }
 
-func (s *redisPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orderID string) {
-	// Retrieve the payment which needs to be cancelled
+func (s *redisPaymentStore) Cancel(ctx context.Context, userID string, orderID string) error {
+	// Retrieve the payment which needs to be canceled
 	get := s.store.Get(ctx, orderID)
 	if get.Err() == redis.Nil {
-		util.NotFound(ctx)
-		return
+		return util.BAD_REQUEST
 	} else if get.Err() != nil {
 		logrus.WithError(get.Err()).Error("unable to retrieve payment to cancel")
-		util.InternalServerError(ctx)
-		return
+		return util.INTERNAL_ERR
 	}
 
 	// get the amount and status in this format --> {"amount": int, "status": "string"}
 	json := get.Val()
 
-	// code for retrieving only the status of the payment from the json (used to check if the payment has already been cancelled)
+	// code for retrieving only the status of the payment from the json (used to check if the payment has already been canceled)
 	// Retrieve the string between "\"status\": \"" and "\"}"
 	payment_status := strings.Split(strings.Split(json, "\"status\": \"")[1], "\"}")[0]
 
@@ -86,10 +80,9 @@ func (s *redisPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orde
 	// Retrieve the string between "\"amount\": " and ","
 	amount := strings.Split(strings.Split(json, "\"amount\": ")[1], ",")[0]
 
-	if payment_status == "cancelled" {
-		logrus.Info("payment is already cancelled")
-		util.BadRequest(ctx)
-		return
+	if payment_status == "canceled" {
+		logrus.Info("payment is already canceled")
+		return util.BAD_REQUEST
 	}
 
 	// Refund the credit to the user
@@ -97,22 +90,20 @@ func (s *redisPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orde
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/add/%s/%s", s.urls.User, userID, amount), nil)
 	if err != nil {
 		logrus.WithError(err).Error("unable to refund credit to user")
-		util.InternalServerError(ctx)
-		return
+		return util.INTERNAL_ERR
 	} else if status != fasthttp.StatusOK {
 		logrus.WithField("status", status).Error("error while refunding credit to user")
-		ctx.SetStatusCode(status)
-		return
+		return util.HTTPErrorToSAGAError(status)
 	}
 
-	// Update the status of the payment to cancelled
-	set := s.store.Set(ctx, orderID, fmt.Sprintf("{\"amount\": %s, \"status\": \"cancelled\"}", amount), 0)
+	// Update the status of the payment to canceled
+	set := s.store.Set(ctx, orderID, fmt.Sprintf("{\"amount\": %s, \"status\": \"canceled\"}", amount), 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update payment status")
-		util.InternalServerError(ctx)
-		return
+		return util.INTERNAL_ERR
 	}
-	util.Ok(ctx)
+
+	return nil
 }
 
 func (s *redisPaymentStore) PaymentStatus(ctx *fasthttp.RequestCtx, orderID string) {

@@ -86,8 +86,7 @@ func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 		return
 	}
 
-	itemsString := itemStringToJSONString(order.Items)
-	response := fmt.Sprintf("{\"order_id\": \"%s\", \"paid\": %t, \"items\": [%s], \"user_id\": \"%s\", \"total_cost\": %d}", order.ID, strings.Contains(string(statusResp), "true"), itemsString, order.UserID, order.Cost)
+	response := fmt.Sprintf("{\"order_id\": \"%s\", \"paid\": %t, \"items\": %s, \"user_id\": \"%s\", \"total_cost\": %d}", order.ID, strings.Contains(string(statusResp), "true"), itemStringToJSONString(order.Items), order.UserID, order.Cost)
 	util.JSONResponse(ctx, fasthttp.StatusOK, response)
 }
 
@@ -197,49 +196,17 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 	util.Ok(ctx)
 }
 
-func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
+func (s *postgresOrderStore) GetOrder(ctx *fasthttp.RequestCtx, orderID string) (string, error) {
 	order := &Order{}
 	err := s.db.Model(&Order{}).
 		Where("id = ?", orderID).
 		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		return
+		return "", ErrNil
 	} else if err != nil {
-		logrus.WithError(err).Error("unable to find order for checkout")
-		util.InternalServerError(ctx)
-		return
+		return "", errwrap.Wrap(err, "unable to find order for checkout")
 	}
 
-	// Make the payment
-	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/pay/%s/%s/%d", s.urls.Payment, order.UserID, orderID, order.Cost), nil)
-	if err != nil {
-		logrus.WithError(err).Error("unable to pay for the order")
-		util.InternalServerError(ctx)
-		return
-	} else if status != fasthttp.StatusOK {
-		logrus.WithField("status", status).Error("error while paying for the order")
-		ctx.SetStatusCode(status)
-		return
-	}
-
-	// Subtract stock for each item in the order
-	items := itemStringToMap(order.Items)
-	for k := range items {
-		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/stock/subtract/%s/1", s.urls.Stock, k), nil)
-		if err != nil {
-			logrus.WithError(err).Error("unable to subtract stock")
-			util.InternalServerError(ctx)
-			return
-		}
-		if status != fasthttp.StatusOK {
-			logrus.WithField("status", status).Error("error while subtracting stock")
-			ctx.SetStatusCode(status)
-			return
-		}
-	}
-
-	util.Ok(ctx)
+	return fmt.Sprintf("{\"order_id\": \"%s\", \"user_id\": \"%s\", \"items\": %s, \"cost\": %d}", orderID, order.UserID, itemStringToJSONString(order.Items), order.Cost), nil
 }

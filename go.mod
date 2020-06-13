@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/fasthttp/router v1.1.6
+	github.com/go-redis/redis v6.15.8+incompatible
 	github.com/go-redis/redis/v8 v8.0.0-beta.2
 	github.com/gofrs/uuid v3.3.0+incompatible
 	github.com/imroc/req v0.3.0

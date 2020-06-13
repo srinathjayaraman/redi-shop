@@ -1,6 +1,7 @@
 package payment
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -29,7 +30,9 @@ func newPostgresPaymentStore(db *gorm.DB, urls *util.Services) *postgresPaymentS
 	}
 }
 
-func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID string, amount int) {
+func (s *postgresPaymentStore) Pay(_ context.Context, userID string, orderID string, amount int) error {
+	var result error
+
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		exists := true
 		payment := &Payment{}
@@ -41,23 +44,23 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 			// Do nothing, record has to be created
 			exists = false
 		} else if err != nil {
-			util.InternalServerError(ctx)
+			result = util.INTERNAL_ERR
 			return errwrap.Wrap(err, "unable to retrieve payment status")
 		}
 
 		// If record is found, check that it is not already paid
 		if exists && payment.Status == "paid" {
-			util.BadRequest(ctx)
+			result = util.BAD_REQUEST
 			return errors.New("order was already paid")
 		}
 
 		c := fasthttp.Client{}
 		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/subtract/%s/%d", s.urls.User, userID, amount), nil)
 		if err != nil {
-			util.InternalServerError(ctx)
+			result = util.INTERNAL_ERR
 			return errwrap.Wrap(err, "unable to subtract credit")
 		} else if status != fasthttp.StatusOK {
-			ctx.SetStatusCode(status)
+			result = util.HTTPErrorToSAGAError(status)
 			return errors.New("error while subtracting credit")
 		}
 
@@ -73,21 +76,22 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 		}
 		err = q.Error
 		if err != nil {
-			util.InternalServerError(ctx)
+			result = util.INTERNAL_ERR
 			return errwrap.Wrap(err, "unable to update payment status")
 		}
 
 		return nil
 	})
 	if err != nil {
-		logrus.WithError(err).Error("unable to pay for order")
-		return
+		logrus.WithError(err).Error("unable to pay")
 	}
 
-	util.Ok(ctx)
+	return result
 }
 
-func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orderID string) {
+func (s *postgresPaymentStore) Cancel(_ context.Context, userID string, orderID string) error {
+	var result error
+
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Retrieve the payment which needs to be cancelled
 		payment := &Payment{}
@@ -96,15 +100,15 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 			First(payment).
 			Error
 		if err == gorm.ErrRecordNotFound {
-			util.NotFound(ctx)
+			result = util.BAD_REQUEST
 			return errwrap.Wrap(err, "payment to cancel not found")
 		} else if err != nil {
-			util.InternalServerError(ctx)
+			result = util.INTERNAL_ERR
 			return errwrap.Wrap(err, "unable to retrieve payment to cancel")
 		}
 
 		if payment.Status == "cancelled" {
-			util.BadRequest(ctx)
+			result = util.BAD_REQUEST
 			return errors.New("payment already canceled")
 		}
 
@@ -112,10 +116,10 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 		c := fasthttp.Client{}
 		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/add/%s/%d", s.urls.User, userID, payment.Amount), nil)
 		if err != nil {
-			util.InternalServerError(ctx)
+			result = util.INTERNAL_ERR
 			return errwrap.Wrap(err, "unable to refund user credit")
 		} else if status != fasthttp.StatusOK {
-			ctx.SetStatusCode(status)
+			result = util.HTTPErrorToSAGAError(status)
 			return errors.New("error refunding user credit")
 		}
 
@@ -125,10 +129,10 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 			Update("status", "cancelled").
 			Error
 		if err == gorm.ErrRecordNotFound {
-			util.NotFound(ctx)
+			result = util.BAD_REQUEST
 			return errwrap.Wrap(err, "unable to update payment status")
 		} else if err != nil {
-			util.InternalServerError(ctx)
+			result = util.INTERNAL_ERR
 			return errwrap.Wrap(err, "unable to update payment status")
 		}
 
@@ -136,9 +140,9 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 	})
 	if err != nil {
 		logrus.WithError(err).Error("unable to cancel payment")
-		return
 	}
-	util.Ok(ctx)
+
+	return result
 }
 
 func (s *postgresPaymentStore) PaymentStatus(ctx *fasthttp.RequestCtx, orderID string) {

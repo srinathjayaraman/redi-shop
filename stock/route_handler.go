@@ -1,9 +1,13 @@
 package stock
 
 import (
+	"context"
 	"strconv"
+	"strings"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/martijnjanssen/redi-shop/util"
+	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
 
@@ -12,9 +16,14 @@ type stockStore interface {
 	Find(*fasthttp.RequestCtx, string)
 	AddStock(*fasthttp.RequestCtx, string, int)
 	SubtractStock(*fasthttp.RequestCtx, string, int)
+
+	add(context.Context, string, int) error
+	subtract(context.Context, string, int) error
 }
+
 type stockRouteHandler struct {
 	stockStore stockStore
+	redis      *redis.Client
 }
 
 func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
@@ -27,10 +36,77 @@ func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
 		store = newRedisStockStore(conn.Redis)
 	}
 
-	return &stockRouteHandler{
+	h := &stockRouteHandler{
 		stockStore: store,
+		redis:      conn.Redis,
 	}
 
+	go h.handleEvents()
+
+	return h
+}
+
+func (h *stockRouteHandler) handleEvents() {
+	ctx := context.Background()
+
+	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_STOCK)
+
+	// Wait for confirmation that subscription is created before publishing anything.
+	_, err := pubsub.Receive(ctx)
+	if err != nil {
+		logrus.WithError(err).Panic("error listening to channel")
+	}
+
+	var rm *redis.Message
+
+	// Go channel which receives messages.
+	ch := pubsub.Channel()
+	for rm = range ch {
+		s := strings.Split(rm.Payload, "#")
+		switch s[1] {
+		case util.MESSAGE_STOCK:
+			go h.SubtractStockItems(ctx, s[0], s[2])
+		}
+	}
+}
+
+func (h *stockRouteHandler) SubtractStockItems(ctx context.Context, tracker string, order string) {
+	items := strings.Split(strings.Split(order, "\"items\": [")[1], "]")[0]
+
+	if items == "" {
+		util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
+		return
+	}
+
+	var err error
+	done := []string{}
+	for _, item := range strings.Split(items[1:len(items)-1], "\",\"") {
+		err = h.stockStore.subtract(ctx, item, 1)
+		if err != nil {
+			break
+		}
+		done = append(done, item)
+	}
+
+	if err != nil {
+		for _, i := range done {
+			err = h.stockStore.add(ctx, i, 1)
+			if err != nil {
+				logrus.WithField("item_id", i).WithError(err).Error("UNABLE TO REVERT STOCK SUBTRACTION")
+			}
+		}
+
+		util.Pub(h.redis, ctx, util.CHANNEL_PAYMENT, tracker, util.MESSAGE_PAY_REVERT, order)
+		if err == util.BAD_REQUEST {
+			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
+		} else {
+			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_INTERNAL, "")
+		}
+
+		return
+	}
+
+	util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
 }
 
 // Returns success/failure, depending on the price status.
