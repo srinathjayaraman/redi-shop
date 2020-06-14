@@ -11,9 +11,7 @@ import (
 )
 
 var (
-	CHANNEL_ORDER   = "CHAN_ORDER"
-	CHANNEL_PAYMENT = "CHAN_PAYMENT"
-	CHANNEL_STOCK   = "CHAN_STOCK"
+	CHANNEL_ORDER = "CHAN_ORDER"
 
 	// Payment events
 	MESSAGE_PAY        = "MESG_PAY"
@@ -32,10 +30,29 @@ var (
 	BAD_REQUEST  = errors.New("BAD_REQUEST")
 )
 
-func Pub(r *redis.Client, ctx context.Context, channel string, trackID string, message string, payload string) {
-	err := r.Publish(ctx, channel, fmt.Sprintf("%s#%s#%s", trackID, message, payload)).Err()
+func PubToOrder(r *redis.Client, ctx context.Context, orderChannelID string, trackID string, message string) {
+	err := r.Publish(ctx, fmt.Sprintf("%s.%s", CHANNEL_ORDER, orderChannelID), fmt.Sprintf("%s#%s#%s#", orderChannelID, trackID, message)).Err()
 	if err != nil {
-		logrus.WithField("channel", channel).WithField("messsage", message).WithError(err).Error("unable to publish message")
+		logrus.WithField("messsage", message).WithError(err).Error("unable to publish message")
+	}
+}
+
+// Publishes to a running microservice
+func Pub(url string, service string, orderChannelID string, trackID string, message string, payload string) {
+	req := fasthttp.AcquireRequest()
+	req.SetRequestURI(fmt.Sprintf("%s/%s/message", url, service))
+	req.Header.SetMethod("POST")
+	req.SetBodyString(fmt.Sprintf("%s#%s#%s#%s", orderChannelID, trackID, message, payload))
+
+	resp := fasthttp.AcquireResponse()
+	client := &fasthttp.Client{}
+	err := client.Do(req, resp)
+	if err != nil {
+		logrus.WithField("service", service).WithField("messsage", message).WithError(err).Error("unable to send message")
+	}
+
+	if resp.StatusCode() != fasthttp.StatusOK {
+		logrus.WithField("status", resp.StatusCode).Error("error while making request")
 	}
 }
 

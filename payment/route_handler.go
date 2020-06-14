@@ -19,7 +19,8 @@ type paymentStore interface {
 
 type paymentRouteHandler struct {
 	paymentStore paymentStore
-	redis        *redis.Client
+	broker       *redis.Client
+	urls         util.Services
 }
 
 func NewRouteHandler(conn *util.Connection) *paymentRouteHandler {
@@ -34,41 +35,28 @@ func NewRouteHandler(conn *util.Connection) *paymentRouteHandler {
 
 	h := &paymentRouteHandler{
 		paymentStore: store,
-		redis:        conn.Redis,
+		broker:       conn.Broker,
+		urls:         conn.URL,
 	}
-
-	go h.handleEvents()
 
 	return h
 }
 
-func (h *paymentRouteHandler) handleEvents() {
-	ctx := context.Background()
+func (h *paymentRouteHandler) HandleMessage(ctx *fasthttp.RequestCtx) {
+	message := string(ctx.Request.Body())
 
-	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_PAYMENT)
-
-	// Wait for confirmation that subscription is created before publishing anything.
-	_, err := pubsub.Receive(ctx)
-	if err != nil {
-		logrus.WithError(err).Panic("error listening to channel")
+	s := strings.Split(message, "#")
+	switch s[2] {
+	case util.MESSAGE_PAY:
+		h.PayOrder(ctx, s[0], s[1], s[3])
+	case util.MESSAGE_PAY_REVERT:
+		h.CancelOrder(ctx, s[3])
 	}
 
-	var rm *redis.Message
-
-	// Go channel which receives messages.
-	ch := pubsub.Channel()
-	for rm = range ch {
-		s := strings.Split(rm.Payload, "#")
-		switch s[1] {
-		case util.MESSAGE_PAY:
-			go h.PayOrder(ctx, s[0], s[2])
-		case util.MESSAGE_PAY_REVERT:
-			go h.CancelOrder(ctx, s[2])
-		}
-	}
+	util.Ok(ctx)
 }
 
-func (h *paymentRouteHandler) PayOrder(ctx context.Context, tracker string, order string) {
+func (h *paymentRouteHandler) PayOrder(ctx context.Context, orderChannelID string, tracker string, order string) {
 	userID := strings.Split(strings.Split(order, "\"user_id\": \"")[1], "\"")[0]
 	orderID := strings.Split(strings.Split(order, "\"order_id\": \"")[1], "\"")[0]
 	amount, _ := strconv.Atoi(strings.Split(strings.Split(order, "\"cost\": ")[1], "}")[0])
@@ -76,15 +64,15 @@ func (h *paymentRouteHandler) PayOrder(ctx context.Context, tracker string, orde
 	err := h.paymentStore.Pay(ctx, userID, orderID, amount)
 	if err != nil {
 		if err == util.INTERNAL_ERR {
-			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_INTERNAL, "")
+			util.PubToOrder(h.broker, ctx, orderChannelID, tracker, util.MESSAGE_ORDER_INTERNAL)
 		} else {
-			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
+			util.PubToOrder(h.broker, ctx, orderChannelID, tracker, util.MESSAGE_ORDER_BADREQUEST)
 		}
 
 		return
 	}
 
-	util.Pub(h.redis, ctx, util.CHANNEL_STOCK, tracker, util.MESSAGE_STOCK, order)
+	util.Pub(h.urls.Stock, "stock", orderChannelID, tracker, util.MESSAGE_STOCK, order)
 }
 
 func (h *paymentRouteHandler) CancelOrder(ctx context.Context, order string) {
@@ -93,31 +81,9 @@ func (h *paymentRouteHandler) CancelOrder(ctx context.Context, order string) {
 
 	err := h.paymentStore.Cancel(ctx, userID, orderID)
 	if err != nil {
-		logrus.WithError(err).Error("unable to revert order payment")
+		logrus.WithError(err).Info("unable to revert order payment")
 	}
 }
-
-// Payment subtracts the amount of the order from the user’s credit
-// func (h *paymentRouteHandler) PayOrder(ctx *fasthttp.RequestCtx) {
-// 	userID := ctx.UserValue("user_id").(string)
-// 	orderID := ctx.UserValue("order_id").(string)
-// 	amount, err := strconv.Atoi(ctx.UserValue("amount").(string))
-// 	if err != nil {
-// 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
-// 		ctx.SetBodyString("amount should be an integer")
-// 		return
-// 	}
-
-// 	h.paymentStore.Pay(ctx, userID, orderID, amount)
-// }
-
-// Cancel the payment made by a user
-// func (h *paymentRouteHandler) CancelOrder(ctx *fasthttp.RequestCtx) {
-// 	userID := ctx.UserValue("user_id").(string)
-// 	orderID := ctx.UserValue("order_id").(string)
-
-// 	h.paymentStore.Cancel(ctx, userID, orderID)
-// }
 
 // Return the status of a payment
 func (h *paymentRouteHandler) GetPaymentStatus(ctx *fasthttp.RequestCtx) {

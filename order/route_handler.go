@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gofrs/uuid"
@@ -29,9 +28,14 @@ var ErrNil = errors.New("value does not exist")
 
 type orderRouteHandler struct {
 	orderStore orderStore
-	redis      *redis.Client
-	ctxs       *sync.Map
-	resps      *sync.Map
+	broker     *redis.Client
+	urls       util.Services
+
+	wgs   map[string]*sync.WaitGroup
+	resps map[string]string
+	lock  *sync.Mutex
+
+	channelID string
 }
 
 func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
@@ -46,12 +50,14 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 
 	h := &orderRouteHandler{
 		orderStore: store,
-		redis:      conn.Redis,
-		ctxs:       &sync.Map{},
-		resps:      &sync.Map{},
+		broker:     conn.Broker,
+		urls:       conn.URL,
+		wgs:        map[string]*sync.WaitGroup{},
+		resps:      map[string]string{},
+		lock:       &sync.Mutex{},
+		channelID:  uuid.Must(uuid.NewV4()).String(),
 	}
 
-	go h.respondCtxs()
 	go h.handleEvents()
 
 	return h
@@ -60,7 +66,7 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 func (h *orderRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_ORDER)
+	pubsub := h.broker.PSubscribe(ctx, fmt.Sprintf("%s.%s", util.CHANNEL_ORDER, h.channelID))
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -68,53 +74,25 @@ func (h *orderRouteHandler) handleEvents() {
 		logrus.WithError(err).Panic("error listening to channel")
 	}
 
-	var rm *redis.Message
-
 	// Go channel which receives messages.
+	var rm *redis.Message
 	ch := pubsub.Channel()
 	for rm = range ch {
 		s := strings.Split(rm.Payload, "#")
-		h.resps.Store(s[0], s[1])
 
+		h.lock.Lock()
+		h.resps[s[1]] = s[2]
+		wg, ok := h.wgs[s[1]]
+		h.lock.Unlock()
+
+		if !ok {
+			logrus.Error("could not get waitgroup")
+			continue
+		}
+		wg.Done()
 	}
 
 	logrus.Fatal("SHOULD NEVER REACH THIS")
-}
-
-func (h *orderRouteHandler) respondCtxs() {
-	for {
-		var toRemove []interface{}
-		h.resps.Range(func(key interface{}, val interface{}) bool {
-			c, ok := h.ctxs.Load(key)
-			if !ok {
-				return true
-			}
-			ctx, _ := c.(*fasthttp.RequestCtx)
-			message, _ := val.(string)
-
-			switch message {
-			case util.MESSAGE_ORDER_SUCCESS:
-				util.Ok(ctx)
-			case util.MESSAGE_ORDER_BADREQUEST:
-				util.BadRequest(ctx)
-			case util.MESSAGE_ORDER_INTERNAL:
-				util.InternalServerError(ctx)
-			default:
-				logrus.WithField("message", message).Error("unknown message")
-			}
-
-			toRemove = append(toRemove, key)
-
-			return true
-		})
-
-		for i := range toRemove {
-			h.ctxs.Delete(toRemove[i])
-			h.resps.Delete(toRemove[i])
-		}
-
-		time.Sleep(5 * time.Millisecond)
-	}
 }
 
 // Creates order for given user, and returns an order ID
@@ -165,13 +143,37 @@ func (h *orderRouteHandler) CheckoutOrder(ctx *fasthttp.RequestCtx) {
 	}
 
 	trackID := uuid.Must(uuid.NewV4()).String()
-	h.ctxs.Store(trackID, ctx)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	h.lock.Lock()
+	h.wgs[trackID] = wg
+	h.lock.Unlock()
 
 	// Send message to issue order payment
-	err = h.redis.Publish(ctx, util.CHANNEL_PAYMENT, fmt.Sprintf("%s#%s#%s", trackID, util.MESSAGE_PAY, order)).Err()
-	if err != nil {
-		logrus.WithError(err).Error("unable to publish message")
+	util.Pub(h.urls.Payment, "payment", h.channelID, trackID, util.MESSAGE_PAY, order)
+
+	wg.Wait()
+
+	h.lock.Lock()
+	message, ok := h.resps[trackID]
+	delete(h.resps, trackID)
+	delete(h.wgs, trackID)
+	h.lock.Unlock()
+
+	if !ok {
+		logrus.Error("could not get response from map")
 		util.InternalServerError(ctx)
 		return
+	}
+
+	switch message {
+	case util.MESSAGE_ORDER_SUCCESS:
+		util.Ok(ctx)
+	case util.MESSAGE_ORDER_BADREQUEST:
+		util.BadRequest(ctx)
+	case util.MESSAGE_ORDER_INTERNAL:
+		util.InternalServerError(ctx)
+	default:
+		logrus.WithField("message", message).Error("unknown message")
 	}
 }

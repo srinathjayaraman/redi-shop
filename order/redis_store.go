@@ -26,20 +26,20 @@ func newRedisOrderStore(c *redis.Client, urls *util.Services) *redisOrderStore {
 }
 
 func (s *redisOrderStore) Create(ctx *fasthttp.RequestCtx, userID string) {
-	orderID := uuid.Must(uuid.NewV4()).String()
 	json := fmt.Sprintf("{\"user_id\": \"%s\", \"items\": [], \"cost\": 0}", userID)
 
-	set := s.store.SetNX(ctx, orderID, json, 0)
-	if set.Err() != nil {
-		logrus.WithError(set.Err()).Error("unable to create new order")
-		util.InternalServerError(ctx)
-		return
-	}
+	var orderID string
+	created := false
+	for !created {
+		orderID = uuid.Must(uuid.NewV4()).String()
+		set := s.store.SetNX(ctx, orderID, json, 0)
+		if set.Err() != nil {
+			logrus.WithError(set.Err()).Error("unable to create new order")
+			util.InternalServerError(ctx)
+			return
+		}
 
-	if !set.Val() {
-		logrus.Error("order with this ID already exists")
-		util.InternalServerError(ctx)
-		return
+		created = set.Val()
 	}
 
 	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"order_id\": \"%s\"}", orderID))
@@ -81,9 +81,9 @@ func (s *redisOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 
 	// Extract [...] part of the order, remove "->#" (cost mapping) from string and assemble string again
 	itemsSplit := strings.Split(get.Val(), "items\": ")
-	arraySplit := strings.Split(itemsSplit[1], ",")
+	arraySplit := strings.Split(itemsSplit[1], ", ")
 	arraySplit[0] = itemStringToJSONString(arraySplit[0])
-	itemsSplit[1] = strings.Join(arraySplit, ",")
+	itemsSplit[1] = strings.Join(arraySplit, ", ")
 	json := strings.Join(itemsSplit, "items\": ")
 
 	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("%s, \"paid\": %t}", json[:len(json)-1], strings.Contains(string(statusResp), "true")))
